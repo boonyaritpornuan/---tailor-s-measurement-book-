@@ -160,7 +160,7 @@ const App: React.FC = () => {
       setIsSignedIn(true);
       await findOrCreateUserSpreadsheet(tokenToUse);
     } else if (tokenToUse && !gapiInited) {
-      console.log('[App.tsx] updateUiBasedOnAuthState: Token exists but GAPI NOT YET initialized. Setting signedIn, status "Authenticated with Google. Initializing API services..."');
+      console.log('[App.tsx] updateUiBasedOnAuthState: Token exists but GAPI NOT YET initialized. Setting signedIn, status message and isLoading.');
       setIsSignedIn(true);
       setStatusMessage(FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS);
       setIsLoading(true);
@@ -187,8 +187,26 @@ const App: React.FC = () => {
     gapiScript.async = true;
     gapiScript.defer = true;
     gapiScript.onload = () => {
-        console.log('[App.tsx] GAPI script loaded. Calling gapi.load("client").');
-        window.gapi.load('client', initializeGapiClient);
+        console.log('[App.tsx] GAPI script loaded. Attempting to load "client" module.');
+        if (window.gapi && typeof window.gapi.load === 'function') {
+            window.gapi.load('client', () => {
+                console.log('[App.tsx] gapi.load("client") CALLBACK FIRED. Calling initializeGapiClient.');
+                initializeGapiClient();
+            });
+        } else {
+            console.error('[App.tsx] GAPI script loaded, but window.gapi.load is not a function. GAPI may not have initialized correctly.');
+            setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND);
+            setIsLoading(false);
+            setGapiInited(false);
+            updateUiBasedOnAuthState(null); 
+        }
+    };
+    gapiScript.onerror = () => {
+        console.error('[App.tsx] GAPI script FAILED to load.');
+        setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND); // Reuse or create specific
+        setIsLoading(false);
+        setGapiInited(false);
+        updateUiBasedOnAuthState(null);
     };
     document.body.appendChild(gapiScript);
 
@@ -229,6 +247,13 @@ const App: React.FC = () => {
         setIsLoading(true);
       }
     };
+    gisScript.onerror = () => {
+        console.error('[App.tsx] GIS script FAILED to load.');
+        setStatusMessage(FIELD_LABELS_TH.ERROR_GIS_NOT_READY); // Reuse or create specific
+        setIsLoading(false);
+        setGisInited(false);
+        updateUiBasedOnAuthState(null);
+    };
     document.body.appendChild(gisScript);
 
     return () => {
@@ -236,7 +261,7 @@ const App: React.FC = () => {
       if (gapiScript.parentNode) gapiScript.parentNode.removeChild(gapiScript);
       if (gisScript.parentNode) gisScript.parentNode.removeChild(gisScript);
     };
-  }, []);
+  }, []); // Removed updateUiBasedOnAuthState from deps as it causes re-runs; its dependencies are managed.
 
   const initializeGapiClient = useCallback(async () => {
     console.log('[App.tsx] initializeGapiClient: Starting GAPI client initialization.');
