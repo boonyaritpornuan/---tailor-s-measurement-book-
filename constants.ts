@@ -80,8 +80,8 @@ export const FIELD_LABELS_TH = {
   ERROR_SYNCING_DATA: 'เกิดข้อผิดพลาดในการซิงค์ข้อมูลกับ Google Drive',
   USING_LOCAL_STORAGE: 'ใช้ที่จัดเก็บข้อมูลในเครื่อง (ลงชื่อเข้าใช้ Google เพื่อบันทึกไปยัง Google Drive ของคุณ)',
   GOOGLE_SHEETS_PROMPT: 'ข้อมูลจะถูกบันทึกไปยัง Google Sheet ใน Google Drive ของคุณ',
-  CONFIG_MISSING_TITLE: 'การตั้งค่า Google Sheets ไม่สมบูรณ์', // Kept for other potential config issues but primary one removed from App.tsx
-  CONFIG_MISSING_MESSAGE: 'กรุณาตรวจสอบการตั้งค่า Client ID ในโค้ดของแอปพลิเคชัน (App.tsx) เพื่อใช้งาน Google Services', // Adjusted message
+  CONFIG_MISSING_TITLE: 'การตั้งค่า Google Sheets ไม่สมบูรณ์',
+  CONFIG_MISSING_MESSAGE: 'กรุณาตรวจสอบการตั้งค่า Client ID ในโค้ดของแอปพลิเคชัน (App.tsx) เพื่อใช้งาน Google Services',
   LOADING_DATA: 'กำลังโหลดข้อมูล',
   LOADING_APP_DATA: 'กำลังเตรียมแอปพลิเคชัน',
   FOOTER_SLOGAN: 'ออกแบบมาเพื่อความสะดวกในการบันทึกข้อมูล',
@@ -91,8 +91,8 @@ export const FIELD_LABELS_TH = {
   SPREADSHEET_NOT_FOUND_CREATING: 'ไม่พบไฟล์ข้อมูลเดิม กำลังสร้างไฟล์ใหม่ใน Google Drive ของคุณ...',
   SPREADSHEET_CREATED_SETUP_HEADERS: 'สร้างไฟล์ข้อมูลสำเร็จ กำลังตั้งค่าหัวตาราง...',
   ERROR_DRIVE_OPERATION: 'เกิดข้อผิดพลาดในการเข้าถึง Google Drive',
-  ERROR_GAPI_NOT_READY: 'Google API Client ยังไม่พร้อมใช้งาน',
-  ERROR_GIS_NOT_READY: 'Google Identity Service ยังไม่พร้อมใช้งาน',
+  ERROR_GAPI_NOT_READY: 'Google API Client ยังไม่พร้อมใช้งาน กรุณาลองอีกครั้ง',
+  ERROR_GIS_NOT_READY: 'Google Identity Service ยังไม่พร้อมใช้งาน กรุณาลองอีกครั้ง',
   ERROR_AUTHENTICATING: 'เกิดข้อผิดพลาดในการยืนยันตัวตนกับ Google',
   ERROR_INITIALIZING_GAPI: 'เกิดข้อผิดพลาดในการเริ่มต้น Google API Client',
   ERROR_SHEET_HEADER_MISMATCH_ATTEMPT_FIX: 'หัวตารางใน Sheet ไม่ตรงกับที่คาดไว้ กำลังพยายามแก้ไข...',
@@ -103,7 +103,13 @@ export const FIELD_LABELS_TH = {
   SETTING_UP_SHEET_HEADERS: 'กำลังตั้งค่าหัวตารางใน Google Sheet...',
   HEADERS_CONFIGURED_SUCCESS: 'ตั้งค่าหัวตารางสำเร็จแล้ว',
   ERROR_SETTING_UP_HEADERS: 'เกิดข้อผิดพลาดในการตั้งค่าหัวตาราง',
-  ERROR_PERMISSION_DENIED_SHEETS: 'ไม่มีสิทธิ์เข้าถึง Google Sheets อาจต้องให้สิทธิ์อีกครั้ง',
+  ERROR_PERMISSION_DENIED_SHEETS: 'ไม่มีสิทธิ์เข้าถึง Google Sheets อาจต้องให้สิทธิ์อีกครั้ง หรือตรวจสอบการตั้งค่า API',
   SAVING_TO_LOCAL_STORAGE_SIGN_IN_PROMPT: 'กำลังบันทึกลงในเครื่อง กรุณาลงชื่อเข้าใช้เพื่อบันทึกไปยัง Google Drive',
   DELETING_FROM_LOCAL_STORAGE_SIGN_IN_PROMPT: 'กำลังลบจากข้อมูลในเครื่อง กรุณาลงชื่อเข้าใช้เพื่อดำเนินการกับข้อมูลใน Google Drive',
+  
+  // New detailed GAPI status messages
+  GAPI_INITIALIZING: 'กำลังเริ่มต้น Google API Client Libraries...',
+  GAPI_INIT_SUCCESS: 'Google API Client Libraries เริ่มต้นสำเร็จแล้ว',
+  AUTHENTICATED_INITIALIZING_APIS: 'ยืนยันตัวตนกับ Google สำเร็จ กำลังเตรียมบริการ API...',
+  ERROR_GAPI_CLIENT_UNEXPECTED: 'ข้อผิดพลาด: Google API Client ไม่พร้อมใช้งานหลังจากเริ่มต้นแล้ว'
 };
