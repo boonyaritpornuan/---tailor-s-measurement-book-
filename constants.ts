@@ -1,4 +1,3 @@
-
 export const USER_SPREADSHEET_FILENAME = 'สมุดวัดตัวลูกค้า (Tailor App Data)'; // Default filename in user's Drive
 
 // LocalStorage Keys
@@ -122,5 +121,13 @@ export const FIELD_LABELS_TH = {
   // Persistent Login Status Messages
   SESSION_RESTORED_LOADING_DATA: 'กู้คืนเซสชันก่อนหน้า กำลังโหลดข้อมูล...',
   SESSION_EXPIRED_SIGN_IN: 'เซสชันหมดอายุ กรุณาลงชื่อเข้าใช้อีกครั้ง',
-  SIGNED_OUT_USING_LOCAL: 'ออกจากระบบแล้ว กำลังใช้งานข้อมูลในเครื่อง'
+  SIGNED_OUT_USING_LOCAL: 'ออกจากระบบแล้ว กำลังใช้งานข้อมูลในเครื่อง',
+
+  // PWA Install Prompt Messages
+  INSTALL_APP_PROMPT_TITLE: 'ติดตั้งแอปพลิเคชันนี้?',
+  INSTALL_APP_DESCRIPTION: 'เพิ่ม "สมุดวัดตัวช่างตัดเสื้อ" ไปยังหน้าจอหลักเพื่อการเข้าถึงที่รวดเร็วและประสบการณ์การใช้งานที่ดีขึ้น',
+  INSTALL_APP_BUTTON: 'ติดตั้งเลย',
+  INSTALL_APP_LATER_BUTTON: 'ไว้ทีหลัง',
+  APP_INSTALL_SUCCESS: 'ติดตั้งแอปพลิเคชันสำเร็จแล้ว!',
+  APP_INSTALL_AVAILABLE: 'สามารถติดตั้งแอปนี้ลงในอุปกรณ์ได้'
 };
