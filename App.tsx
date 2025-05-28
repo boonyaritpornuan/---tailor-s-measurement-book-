@@ -52,13 +52,14 @@ const App: React.FC = () => {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [userSpreadsheetId, setUserSpreadsheetId] = useState<string | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Initially true until GAPI/GIS attempt or fallback
   const [statusMessage, setStatusMessage] = useState<string | null>(FIELD_LABELS_TH.LOADING_APP_DATA);
   const [actionRequiresAuth, setActionRequiresAuth] = useState<(() => void) | null>(null);
 
+
   const loadMeasurementsFromLocalStorage = useCallback(() => {
-    console.log('[App.tsx] loadMeasurementsFromLocalStorage: Loading data from local storage.');
-    setIsLoading(true);
+    console.log('[App.tsx] loadMeasurementsFromLocalStorage: Loading data.');
+    setIsLoading(true); // Ensure loading state is true before this sync operation
     try {
       const storedMeasurements = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (storedMeasurements) {
@@ -67,23 +68,23 @@ const App: React.FC = () => {
       } else {
         setMeasurements([]);
       }
-      setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE)
+      setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE);
     } catch (error) {
-      console.error("[App.tsx] loadMeasurementsFromLocalStorage: Failed to load measurements from localStorage:", error);
+      console.error("[App.tsx] loadMeasurementsFromLocalStorage: Failed to load:", error);
       setMeasurements([]);
-       setStatusMessage(FIELD_LABELS_TH.ERROR_LOADING_LOCAL_DATA);
+      setStatusMessage(FIELD_LABELS_TH.ERROR_LOADING_LOCAL_DATA);
     }
     setIsLoading(false);
   }, []);
 
 
   const findOrCreateUserSpreadsheet = useCallback(async (token: string) => {
-    console.log('[App.tsx] findOrCreateUserSpreadsheet: Attempting to find or create spreadsheet.');
+    console.log('[App.tsx] findOrCreateUserSpreadsheet: Called.');
     if (!token || !gapiInited) {
-        console.warn('[App.tsx] findOrCreateUserSpreadsheet: Called with no token or GAPI not initialized.');
+        console.warn('[App.tsx] findOrCreateUserSpreadsheet: Aborted. Token or GAPI not ready.');
         setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_NOT_READY);
         setIsLoading(false);
-        loadMeasurementsFromLocalStorage(); // Fallback
+        // Fallback handled by useEffect
         return;
     }
     setIsLoading(true);
@@ -101,7 +102,7 @@ const App: React.FC = () => {
         const foundFileId = driveResponse.result.files[0].id;
         console.log(`[App.tsx] findOrCreateUserSpreadsheet: Found existing spreadsheet with ID: ${foundFileId}`);
         setUserSpreadsheetId(foundFileId);
-        setStatusMessage(FIELD_LABELS_TH.SPREADSHEET_FOUND_LOADING_DATA);
+        // StatusMessage will be updated by loadMeasurementsFromSheet
         await loadMeasurementsFromSheet(token, foundFileId);
       } else {
         console.log('[App.tsx] findOrCreateUserSpreadsheet: Spreadsheet not found, creating new one...');
@@ -117,71 +118,49 @@ const App: React.FC = () => {
         const newFileId = createResponse.result.id;
         setUserSpreadsheetId(newFileId);
         setStatusMessage(FIELD_LABELS_TH.SPREADSHEET_CREATED_SETUP_HEADERS);
-        await setupSheetHeaders(token, newFileId); // Setup headers for the new sheet
-        await loadMeasurementsFromSheet(token, newFileId); // Then load (which should be empty initially)
+        await setupSheetHeaders(token, newFileId);
+        await loadMeasurementsFromSheet(token, newFileId); 
       }
     } catch (error: any) {
-      console.error('[App.tsx] findOrCreateUserSpreadsheet: Error finding or creating spreadsheet:', JSON.stringify(error, null, 2));
+      console.error('[App.tsx] findOrCreateUserSpreadsheet: Error:', JSON.stringify(error, null, 2));
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_DRIVE_OPERATION}: ${error.result?.error?.message || error.message}`);
-      await updateUiBasedOnAuthState(null);
+      setIsSignedIn(false); // Force sign out on critical Drive error
+      setAccessToken(null);
+      // Fallback to local storage will be triggered by useEffect due to isSignedIn change
     }
-    setIsLoading(false);
-  }, [gapiInited, loadMeasurementsFromLocalStorage]); // Removed internal calls from deps, added loadMeasurementsFromLocalStorage for fallback.
+    // setIsLoading(false) is handled by loadMeasurementsFromSheet or error path
+  }, [gapiInited]); // Removed loadMeasurementsFromSheet from deps to avoid circularity, it's called directly.
 
 
-  const updateUiBasedOnAuthState = useCallback(async (newAccessToken: string | null) => {
-    console.log(`[App.tsx] updateUiBasedOnAuthState: Called with newAccessToken: ${newAccessToken ? 'Exists' : 'Null'}, gapiInited: ${gapiInited}, current accessToken state: ${accessToken ? 'Exists' : 'Null'}`);
-
-    if (newAccessToken !== accessToken) {
-        console.log('[App.tsx] updateUiBasedOnAuthState: New token received, updating accessToken state.');
-        setAccessToken(newAccessToken);
-    }
-
-    const tokenToUse = newAccessToken;
-
-    console.log(`[App.tsx] updateUiBasedOnAuthState: Effective tokenToUse: ${tokenToUse ? 'Exists' : 'Null'}. Proceeding with gapiInited: ${gapiInited}`);
-
-    if (tokenToUse && gapiInited) {
-      console.log('[App.tsx] updateUiBasedOnAuthState: Token exists and GAPI initialized. Setting GAPI token and finding/creating sheet.');
-      const currentGapiToken = window.gapi?.client?.getToken?.();
-      if (!currentGapiToken || currentGapiToken.access_token !== tokenToUse) {
-        if (window.gapi?.client) {
-            console.log('[App.tsx] updateUiBasedOnAuthState: Setting token for gapi.client.');
-            window.gapi.client.setToken({ access_token: tokenToUse });
-        } else {
-            console.warn("[App.tsx] updateUiBasedOnAuthState: gapiInited is true, but gapi.client is not available to setToken.");
-            setIsSignedIn(false);
-            setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_CLIENT_UNEXPECTED);
-            loadMeasurementsFromLocalStorage();
-            setIsLoading(false);
-            return;
-        }
+  // GIS Token Callback - simplified to set auth state
+  const onTokenResponse = useCallback(async (tokenResponse: any) => {
+    console.log('[App.tsx] onTokenResponse: Received tokenResponse:', tokenResponse);
+    if (tokenResponse && tokenResponse.access_token) {
+      console.log('[App.tsx] onTokenResponse: Access token received.');
+      setAccessToken(tokenResponse.access_token);
+      setIsSignedIn(true);
+      // The main useEffect will handle GAPI init and data loading
+      if (actionRequiresAuth) {
+        console.log('[App.tsx] onTokenResponse: Executing pending actionRequiresAuth.');
+        actionRequiresAuth();
+        setActionRequiresAuth(null);
       }
-      setIsSignedIn(true);
-      await findOrCreateUserSpreadsheet(tokenToUse);
-    } else if (tokenToUse && !gapiInited) {
-      console.log('[App.tsx] updateUiBasedOnAuthState: Token exists but GAPI NOT YET initialized. Setting signedIn, status message and isLoading.');
-      setIsSignedIn(true);
-      setStatusMessage(FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS);
-      setIsLoading(true);
-    } else { 
-      console.log('[App.tsx] updateUiBasedOnAuthState: No token. Setting signedOut, using local storage.');
+    } else {
+      console.error('[App.tsx] onTokenResponse: Token response error or access_token missing.', tokenResponse);
+      setStatusMessage(FIELD_LABELS_TH.ERROR_AUTHENTICATING);
+      setAccessToken(null);
       setIsSignedIn(false);
-      setUserSpreadsheetId(null);
-      setAccessToken(null); 
-      if (window.gapi?.client) {
-         console.log('[App.tsx] updateUiBasedOnAuthState: Clearing token for gapi.client.');
-         window.gapi.client.setToken(null);
-      }
-      setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE);
-      loadMeasurementsFromLocalStorage();
+      // The main useEffect will handle fallback to local storage
     }
-  }, [gapiInited, accessToken, loadMeasurementsFromLocalStorage, findOrCreateUserSpreadsheet]);
+  }, [actionRequiresAuth]);
 
 
+  // Effect for GAPI/GIS script loading
   useEffect(() => {
     console.log('[App.tsx] useEffect[]: Initializing Google API scripts.');
     setStatusMessage(FIELD_LABELS_TH.LOADING_APP_DATA + " (Google API)...");
+    setIsLoading(true);
+
     const gapiScript = document.createElement('script');
     gapiScript.src = "https://apis.google.com/js/api.js";
     gapiScript.async = true;
@@ -194,19 +173,17 @@ const App: React.FC = () => {
                 initializeGapiClient();
             });
         } else {
-            console.error('[App.tsx] GAPI script loaded, but window.gapi.load is not a function. GAPI may not have initialized correctly.');
+            console.error('[App.tsx] GAPI script loaded, but window.gapi.load is not a function.');
             setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND);
-            setIsLoading(false);
-            setGapiInited(false);
-            updateUiBasedOnAuthState(null); 
+            setGapiInited(false); // Ensure gapiInited is false
+            setIsLoading(false); // Allow UI to show error and potentially fallback
         }
     };
     gapiScript.onerror = () => {
         console.error('[App.tsx] GAPI script FAILED to load.');
-        setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND); // Reuse or create specific
-        setIsLoading(false);
+        setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND);
         setGapiInited(false);
-        updateUiBasedOnAuthState(null);
+        setIsLoading(false);
     };
     document.body.appendChild(gapiScript);
 
@@ -216,43 +193,33 @@ const App: React.FC = () => {
     gisScript.defer = true;
     gisScript.onload = () => {
       console.log('[App.tsx] GIS script loaded. Initializing token client.');
-      setGisInited(true);
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID_FOR_SHEETS,
-        scope: SCOPES,
-        callback: async (tokenResponse: any) => {
-          console.log('[App.tsx] GIS Token Callback: Received tokenResponse:', tokenResponse);
-          if (tokenResponse && tokenResponse.access_token) {
-            console.log('[App.tsx] GIS Token Callback: Access token received. Calling updateUiBasedOnAuthState.');
-            await updateUiBasedOnAuthState(tokenResponse.access_token);
-             if (actionRequiresAuth) {
-              console.log('[App.tsx] GIS Token Callback: Executing pending actionRequiresAuth.');
-              actionRequiresAuth();
-              setActionRequiresAuth(null);
-            }
-          } else {
-            console.error('[App.tsx] GIS Token Callback: Token response error or access_token missing.', tokenResponse);
-            setStatusMessage(FIELD_LABELS_TH.ERROR_AUTHENTICATING);
-            await updateUiBasedOnAuthState(null);
-          }
-        },
-      });
-      setTokenClient(client);
-      if(gapiInited && !accessToken) {
-        console.log('[App.tsx] GIS onload: GAPI inited but no access token. Calling updateUiBasedOnAuthState(null).');
-        updateUiBasedOnAuthState(null);
-      } else if (!gapiInited && !accessToken) {
-        console.log('[App.tsx] GIS onload: Neither GAPI inited nor access token. Setting loading status.');
-        setStatusMessage(FIELD_LABELS_TH.LOADING_APP_DATA + " (Google API)...");
-        setIsLoading(true);
+      if (window.google?.accounts?.oauth2) {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID_FOR_SHEETS,
+          scope: SCOPES,
+          callback: onTokenResponse, // Use the memoized callback
+        });
+        setTokenClient(client);
+        setGisInited(true);
+         // If GAPI is already inited but we are not signed in, it means scripts are loaded, ready for user action.
+        if (gapiInited && !isSignedIn) {
+            setIsLoading(false); // Scripts loaded, ready for sign-in
+            setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE); // Or a prompt to sign in
+        } else if (!gapiInited && !isSignedIn) {
+            // Still waiting for GAPI
+        }
+      } else {
+        console.error('[App.tsx] GIS script loaded, but window.google.accounts.oauth2 not found.');
+        setStatusMessage(FIELD_LABELS_TH.ERROR_GIS_NOT_READY);
+        setGisInited(false);
+        setIsLoading(false);
       }
     };
     gisScript.onerror = () => {
         console.error('[App.tsx] GIS script FAILED to load.');
-        setStatusMessage(FIELD_LABELS_TH.ERROR_GIS_NOT_READY); // Reuse or create specific
-        setIsLoading(false);
+        setStatusMessage(FIELD_LABELS_TH.ERROR_GIS_NOT_READY);
         setGisInited(false);
-        updateUiBasedOnAuthState(null);
+        setIsLoading(false);
     };
     document.body.appendChild(gisScript);
 
@@ -261,18 +228,18 @@ const App: React.FC = () => {
       if (gapiScript.parentNode) gapiScript.parentNode.removeChild(gapiScript);
       if (gisScript.parentNode) gisScript.parentNode.removeChild(gisScript);
     };
-  }, []); // Removed updateUiBasedOnAuthState from deps as it causes re-runs; its dependencies are managed.
+  }, [onTokenResponse]); // initializeGapiClient is stable, onTokenResponse added.
+
 
   const initializeGapiClient = useCallback(async () => {
     console.log('[App.tsx] initializeGapiClient: Starting GAPI client initialization.');
-    setStatusMessage(FIELD_LABELS_TH.GAPI_INITIALIZING);
+    // Status is already "LOADING_APP_DATA..." or will be updated by main useEffect
 
     if (!window.gapi?.client?.init) {
-        console.error('[App.tsx] initializeGapiClient: window.gapi.client.init is not available. GAPI client library or "client" module may not have loaded correctly.');
+        console.error('[App.tsx] initializeGapiClient: window.gapi.client.init is not available.');
         setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_CLIENT_INIT_NOT_FOUND);
+        setGapiInited(false);
         setIsLoading(false);
-        setGapiInited(false); 
-        await updateUiBasedOnAuthState(null); // Fallback to local storage if GAPI is fundamentally broken
         return;
     }
 
@@ -287,30 +254,55 @@ const App: React.FC = () => {
       console.timeEnd("gapiClientInit");
       console.log('[App.tsx] initializeGapiClient: GAPI client initialized successfully.');
       setGapiInited(true);
-      setStatusMessage(FIELD_LABELS_TH.GAPI_INIT_SUCCESS);
-
-      const gapiTokenInfo = window.gapi.client.getToken?.();
-      const tokenForUpdate = accessToken || gapiTokenInfo?.access_token;
-      console.log(`[App.tsx] initializeGapiClient: Token for updateUiBasedOnAuthState after GAPI init: ${tokenForUpdate ? 'Exists' : 'Null'}`);
-      await updateUiBasedOnAuthState(tokenForUpdate);
-
+      // Main useEffect will now handle logic based on gapiInited becoming true
+      // No need to set isLoading or statusMessage here, main useEffect will react.
     } catch (error: any) {
       console.timeEnd("gapiClientInit"); 
       console.error('[App.tsx] initializeGapiClient: Error initializing Google API client:', JSON.stringify(error, null, 2));
-      let detailedErrorMessage = 'Unknown error during GAPI init.';
-      if (error.result && error.result.error) {
-        detailedErrorMessage = `Code: ${error.result.error.code}, Message: ${error.result.error.message}, Details: ${JSON.stringify(error.result.error.errors)}`;
-      } else if (error.details) {
-        detailedErrorMessage = error.details;
-      } else if (error.message) {
-        detailedErrorMessage = error.message;
-      }
+      let detailedErrorMessage = error.result?.error?.message || error.details || error.message || 'Unknown error';
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_INITIALIZING_GAPI}: ${detailedErrorMessage}`);
       setGapiInited(false);
-      setIsLoading(false);
-      await updateUiBasedOnAuthState(null);
+      setIsLoading(false); // Stop loading on GAPI init failure
     }
-  }, [accessToken, updateUiBasedOnAuthState]);
+  }, []);
+
+
+  // Main useEffect to handle data loading logic based on auth and GAPI state
+  useEffect(() => {
+    console.log(`[App.tsx] useEffect[isSignedIn,accessToken,gapiInited]: States - isSignedIn: ${isSignedIn}, accessToken: ${accessToken ? 'Exists' : 'Null'}, gapiInited: ${gapiInited}`);
+    if (isSignedIn && accessToken && gapiInited) {
+      console.log('[App.tsx] useEffect: All conditions met. Setting GAPI token and loading Google Drive data.');
+      setIsLoading(true); // Set loading before async operation
+      setStatusMessage(FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS); // Or SYNCING_DATA
+      if (window.gapi?.client) {
+        window.gapi.client.setToken({ access_token: accessToken });
+        findOrCreateUserSpreadsheet(accessToken);
+      } else {
+         console.error('[App.tsx] useEffect: isSignedIn, accessToken, gapiInited all true, but window.gapi.client not available!');
+         setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_CLIENT_UNEXPECTED);
+         setIsLoading(false);
+      }
+    } else if (!isSignedIn && (gisInited || !gisInited && !gapiInited)) { // If not signed in, and GIS is ready OR if both are not ready (initial load)
+      console.log('[App.tsx] useEffect: Not signed in or scripts still loading. Using local storage.');
+      if (window.gapi?.client) window.gapi.client.setToken(null);
+      setUserSpreadsheetId(null);
+      loadMeasurementsFromLocalStorage(); // This sets isLoading internally
+    } else if (isSignedIn && accessToken && !gapiInited) {
+      console.log('[App.tsx] useEffect: Signed in, token present, but GAPI not yet ready. Waiting...');
+      setStatusMessage(FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS);
+      setIsLoading(true);
+    } else if (!accessToken && isSignedIn && gapiInited) {
+        console.warn('[App.tsx] useEffect: SignedIn is true, GAPI inited, but no accessToken. This state should ideally not happen or be transient. Falling back.');
+        setIsSignedIn(false); // Correct the state
+        // Fallback to local storage will be handled in the next render cycle of this useEffect
+    } else if (!gapiInited && !gisInited && !isLoading) {
+        // Scripts haven't loaded yet, but isLoading was potentially set to false by an error.
+        // Ensure loading state reflects reality if scripts are still pending.
+        console.log('[App.tsx] useEffect: Scripts not loaded, ensuring isLoading is true.');
+        setIsLoading(true);
+        setStatusMessage(FIELD_LABELS_TH.LOADING_APP_DATA + " (Google API)...");
+    }
+  }, [isSignedIn, accessToken, gapiInited, findOrCreateUserSpreadsheet, loadMeasurementsFromLocalStorage, gisInited]);
 
 
   const handleAuthClick = (callback?: () => void) => {
@@ -323,6 +315,8 @@ const App: React.FC = () => {
         console.log('[App.tsx] handleAuthClick: Setting actionRequiresAuth.');
         setActionRequiresAuth(() => callback);
     }
+    // If already signed in and have a token, a prompt 'consent' might be needed
+    // if you need to re-verify or get additional scopes. Otherwise, 'none' or '' for transparent.
     const promptValue = accessToken ? 'consent' : ''; 
     console.log(`[App.tsx] handleAuthClick: Requesting access token with prompt: '${promptValue}'`);
     tokenClient.requestAccessToken({ prompt: promptValue });
@@ -333,13 +327,17 @@ const App: React.FC = () => {
     const currentTokenToRevoke = accessToken; 
     if (currentTokenToRevoke && window.google?.accounts?.oauth2?.revoke) {
       console.log('[App.tsx] handleSignoutClick: Revoking token.');
-      window.google.accounts.oauth2.revoke(currentTokenToRevoke, async () => {
-        console.log('[App.tsx] handleSignoutClick: Token revoked. Calling updateUiBasedOnAuthState(null).');
-        await updateUiBasedOnAuthState(null);
+      window.google.accounts.oauth2.revoke(currentTokenToRevoke, () => {
+        console.log('[App.tsx] handleSignoutClick: Token revoked.');
+        setAccessToken(null);
+        setIsSignedIn(false);
+        // Main useEffect will handle UI update and fallback to local storage
       });
     } else {
-       console.warn('[App.tsx] handleSignoutClick: No token to revoke or GIS revoke function not available. Forcing UI to signed-out state.');
-       updateUiBasedOnAuthState(null);
+       console.warn('[App.tsx] handleSignoutClick: No token to revoke or GIS revoke not available.');
+       setAccessToken(null);
+       setIsSignedIn(false);
+       // Main useEffect will handle UI update
     }
   };
 
@@ -356,11 +354,11 @@ const App: React.FC = () => {
   const setupSheetHeaders = useCallback(async (token: string | null, spreadsheetIdToUse: string | null) => {
     if (!token || !gapiInited || !spreadsheetIdToUse) {
         console.warn(`[App.tsx] setupSheetHeaders: Aborted due to missing token, GAPI init status (${gapiInited}), or spreadsheetId.`);
-        return;
+        return; // Don't set loading false here, caller should manage
     }
     console.log(`[App.tsx] setupSheetHeaders: Attempting to set up sheet headers for sheet ID: ${spreadsheetIdToUse}`);
-    setStatusMessage(FIELD_LABELS_TH.SETTING_UP_SHEET_HEADERS);
-    setIsLoading(true);
+    // setIsLoading(true); // Loading state is managed by the caller (findOrCreate or loadMeasurements)
+    // setStatusMessage(FIELD_LABELS_TH.SETTING_UP_SHEET_HEADERS);
     try {
         console.log(`[App.tsx] setupSheetHeaders: Getting spreadsheet details for sheets...`);
         const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
@@ -393,26 +391,24 @@ const App: React.FC = () => {
             },
         });
         console.log("[App.tsx] setupSheetHeaders: Sheet headers set up successfully in " + SHEET_NAME);
-        setStatusMessage(FIELD_LABELS_TH.HEADERS_CONFIGURED_SUCCESS);
+        // setStatusMessage(FIELD_LABELS_TH.HEADERS_CONFIGURED_SUCCESS); // Let caller set final status
     } catch (error: any) {
         console.error('[App.tsx] setupSheetHeaders: Error setting up sheet headers:', JSON.stringify(error, null, 2));
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_SETTING_UP_HEADERS}: ${error.result?.error?.message || 'Unknown error'}`);
+        // setIsLoading(false); // Let caller manage
     }
-    setIsLoading(false);
   }, [gapiInited]);
 
 
   const loadMeasurementsFromSheet = useCallback(async (token: string | null, spreadsheetIdToUse: string | null) => {
     if (!token || !gapiInited || !spreadsheetIdToUse) {
-      console.warn(`[App.tsx] loadMeasurementsFromSheet: Aborted due to missing token, GAPI init status (${gapiInited}), or spreadsheetId.`);
+      console.warn(`[App.tsx] loadMeasurementsFromSheet: Aborted. Conditions not met. isSignedIn: ${isSignedIn}, token: ${token ? 'Exists' : 'Null'}, gapiInited: ${gapiInited}, sheetId: ${spreadsheetIdToUse}`);
       setIsLoading(false);
-      if (!token && !isSignedIn) { 
-         loadMeasurementsFromLocalStorage();
-      }
+      // Fallback to local storage will be handled by the main useEffect if isSignedIn becomes false
       return;
     }
     console.log(`[App.tsx] loadMeasurementsFromSheet: Loading data from sheet ID: ${spreadsheetIdToUse}`);
-    setIsLoading(true);
+    setIsLoading(true); // Explicitly set loading true here
     setStatusMessage(FIELD_LABELS_TH.SYNCING_DATA);
     try {
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
@@ -424,7 +420,7 @@ const App: React.FC = () => {
       if (values && values.length > 0) { 
         const headerRow = values[0];
         if(JSON.stringify(headerRow) !== JSON.stringify(SHEET_FIELD_ORDER)) {
-            console.warn("[App.tsx] loadMeasurementsFromSheet: Sheet header mismatch. Expected:", SHEET_FIELD_ORDER, "Got:", headerRow, "Attempting to fix headers.");
+            console.warn("[App.tsx] loadMeasurementsFromSheet: Sheet header mismatch. Attempting to fix headers.");
             setStatusMessage(FIELD_LABELS_TH.ERROR_SHEET_HEADER_MISMATCH_ATTEMPT_FIX);
             await setupSheetHeaders(token, spreadsheetIdToUse);
             console.log("[App.tsx] loadMeasurementsFromSheet: Retrying loadMeasurementsFromSheet after header fix attempt.");
@@ -437,34 +433,38 @@ const App: React.FC = () => {
         setMeasurements(loadedMeasurements);
         setStatusMessage(loadedMeasurements.length > 0 ? FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS : FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE})`);
       } else { 
-        console.log(`[App.tsx] loadMeasurementsFromSheet: No values found in sheet "${SHEET_NAME}". Assuming empty sheet or needs headers.`);
+        console.log(`[App.tsx] loadMeasurementsFromSheet: No values found. Assuming empty sheet or needs headers.`);
         setMeasurements([]);
-        setStatusMessage(FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE}) - ${FIELD_LABELS_TH.ERROR_EMPTY_RESPONSE}`);
-        await setupSheetHeaders(token, spreadsheetIdToUse); 
+        // setStatusMessage(FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE}) - ${FIELD_LABELS_TH.ERROR_EMPTY_RESPONSE}`);
+        await setupSheetHeaders(token, spreadsheetIdToUse); // Setup headers if sheet is empty
+        setStatusMessage(FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE})`); // After setup, it's empty.
       }
     } catch (error: any) {
-      console.error('[App.tsx] loadMeasurementsFromSheet: Error loading measurements from Google Sheets:', JSON.stringify(error, null, 2));
+      console.error('[App.tsx] loadMeasurementsFromSheet: Error:', JSON.stringify(error, null, 2));
       const errorMessage = error.result?.error?.message || error.message || 'Unknown error';
       if (error.result?.error?.status === 'NOT_FOUND' || errorMessage.toLowerCase().includes('requested entity was not found') || (error.result?.error?.code === 400 && errorMessage.toLowerCase().includes('unable to parse range'))) {
-        console.warn(`[App.tsx] loadMeasurementsFromSheet: Sheet tab "${SHEET_NAME}" likely not found or error parsing range. Attempting to create/fix headers.`);
-        setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: Sheet tab "${SHEET_NAME}" not found. Attempting to create.`);
+        console.warn(`[App.tsx] loadMeasurementsFromSheet: Sheet tab "${SHEET_NAME}" likely not found. Attempting to create/fix headers.`);
+        setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: Sheet "${SHEET_NAME}" not found. Creating.`);
         await setupSheetHeaders(token, spreadsheetIdToUse); 
-        console.log("[App.tsx] loadMeasurementsFromSheet: Retrying loadMeasurementsFromSheet after potential sheet creation.");
+        console.log("[App.tsx] loadMeasurementsFromSheet: Retrying load after sheet creation attempt.");
         await loadMeasurementsFromSheet(token, spreadsheetIdToUse); 
         return;
       } else if (error.result?.error?.code === 403 && error.result?.error?.status === "PERMISSION_DENIED"){
-         console.warn('[App.tsx] loadMeasurementsFromSheet: Permission denied for Google Sheets.');
+         console.warn('[App.tsx] loadMeasurementsFromSheet: Permission denied.');
          setStatusMessage(`${FIELD_LABELS_TH.ERROR_PERMISSION_DENIED_SHEETS}`);
+         // Re-authentication might be needed. Prompt user.
+         // This might involve revoking token and asking to sign in again if consent is stale.
          handleAuthClick(); 
       }
       else {
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${errorMessage}`);
-        console.warn('[App.tsx] loadMeasurementsFromSheet: Unhandled Sheets error, falling back to local storage.');
-        updateUiBasedOnAuthState(null); 
+        console.warn('[App.tsx] loadMeasurementsFromSheet: Unhandled Sheets error. Consider fallback.');
+        setIsSignedIn(false); // Force sign-out on unhandled error to trigger local storage via useEffect
+        setAccessToken(null);
       }
     }
     setIsLoading(false);
-  }, [gapiInited, setupSheetHeaders, isSignedIn, loadMeasurementsFromLocalStorage, updateUiBasedOnAuthState]);
+  }, [gapiInited, setupSheetHeaders, isSignedIn]); // isSignedIn added to re-evaluate if it changes externally
 
 
   const handleSave = async (measurementToSave: CustomerMeasurement) => {
@@ -473,14 +473,15 @@ const App: React.FC = () => {
     if (!finalMeasurement.measurementDate) finalMeasurement.measurementDate = new Date().toISOString().split('T')[0];
     if (!finalMeasurement.id) finalMeasurement.id = Date.now().toString();
 
-    if (!accessToken || !gapiInited || !userSpreadsheetId) {
-      console.warn('[App.tsx] handleSave: Saving to local storage due to missing token, GAPI init, or spreadsheet ID.');
+    if (!accessToken || !gapiInited || !userSpreadsheetId || !isSignedIn) {
+      console.warn('[App.tsx] handleSave: Conditions not met for Google Sheets save. Using local storage.');
       setStatusMessage(FIELD_LABELS_TH.SAVING_TO_LOCAL_STORAGE_SIGN_IN_PROMPT);
-      if (!isSignedIn) {
+      if (!isSignedIn && tokenClient) { // tokenClient check to ensure GIS is ready for auth prompt
           console.log('[App.tsx] handleSave: User not signed in. Prompting for auth.');
           handleAuthClick(() => handleSave(measurementToSave)); 
           return;
       }
+      // If signed in but other conditions (gapi, sheetId) fail, or if no tokenClient to prompt
       setMeasurements(prev => {
         const existingIndex = prev.findIndex(m => m.id === finalMeasurement.id);
         let updatedMeasurements;
@@ -535,6 +536,7 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error('[App.tsx] handleSave: Error saving measurement to Google Sheets:', JSON.stringify(error, null, 2));
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${error.result?.error?.message || error.message}`);
+      // Don't necessarily sign out, let user retry or fix issue. Local save already happened if this path was chosen.
     }
     setCurrentView(ViewMode.List);
     setEditingMeasurement(null);
@@ -543,6 +545,7 @@ const App: React.FC = () => {
 
   const getSheetIdByTitle = async (spreadsheetFileId: string, sheetTitle: string): Promise<number | undefined> => {
     console.log(`[App.tsx] getSheetIdByTitle: Getting numeric sheetId for title "${sheetTitle}" in file "${spreadsheetFileId}"`);
+    if(!gapiInited || !window.gapi?.client?.sheets) return undefined; // Guard
     try {
         const response = await window.gapi.client.sheets.spreadsheets.get({
             spreadsheetId: spreadsheetFileId,
@@ -570,10 +573,10 @@ const App: React.FC = () => {
     }
     if (!window.confirm(FIELD_LABELS_TH.CONFIRM_DELETE_MESSAGE)) return;
 
-    if (!accessToken || !gapiInited || !userSpreadsheetId || !measurementToDelete.rowIndex) {
-      console.warn('[App.tsx] handleDelete: Deleting from local storage due to missing token, GAPI init, spreadsheet ID, or rowIndex.');
+    if (!accessToken || !gapiInited || !userSpreadsheetId || !measurementToDelete.rowIndex || !isSignedIn) {
+      console.warn('[App.tsx] handleDelete: Conditions not met for Google Sheets delete. Using local storage.');
       setStatusMessage(FIELD_LABELS_TH.DELETING_FROM_LOCAL_STORAGE_SIGN_IN_PROMPT);
-      if(!isSignedIn){
+      if(!isSignedIn && tokenClient){ // tokenClient check for auth readiness
         console.log('[App.tsx] handleDelete: User not signed in. Prompting for auth.');
         handleAuthClick(() => handleDelete(id)); 
         return;
@@ -581,6 +584,8 @@ const App: React.FC = () => {
       const updatedLocalMeasurements = measurements.filter(m => m.id !== id);
       saveMeasurementsToLocalStorage(updatedLocalMeasurements);
       setMeasurements(updatedLocalMeasurements);
+      if (updatedLocalMeasurements.length === 0) setStatusMessage(FIELD_LABELS_TH.NO_RECORDS);
+      else setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE); // Or a success delete message
       setIsLoading(false);
       return;
     }
@@ -608,14 +613,14 @@ const App: React.FC = () => {
           }],
         },
       });
-      setStatusMessage(FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS);
+      setStatusMessage(FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS); // Or "Deleted successfully"
       await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); 
     } catch (error: any) {
       console.error('[App.tsx] handleDelete: Error deleting measurement from Google Sheets:', JSON.stringify(error, null, 2));
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${error.result?.error?.message || error.message || String(error)}`);
     }
     setIsLoading(false);
-  }, [measurements, accessToken, gapiInited, userSpreadsheetId, loadMeasurementsFromSheet, isSignedIn]);
+  }, [measurements, accessToken, gapiInited, userSpreadsheetId, loadMeasurementsFromSheet, isSignedIn, tokenClient]);
 
 
   const handleAddNew = () => {
@@ -655,13 +660,16 @@ const App: React.FC = () => {
 
       <main className="container mx-auto max-w-7xl">
         <div className="mb-6 p-4 bg-sky-50 border border-sky-200 rounded-lg shadow-sm text-center">
-          {(!gapiInited || !gisInited && !isSignedIn) && isLoading && <p className="text-lg text-sky-700">{FIELD_LABELS_TH.LOADING_APP_DATA} (Google API)...</p>}
+          {/* Auth Buttons and Status */}
+          {(!gisInited || !gapiInited) && isLoading && 
+            <p className="text-lg text-sky-700 animate-pulse">{FIELD_LABELS_TH.LOADING_APP_DATA} (Google API)...</p>
+          }
 
-          {gapiInited && gisInited && !isSignedIn && (
+          {gisInited && gapiInited && !isSignedIn && (
             <button
               onClick={() => handleAuthClick()}
               className="px-6 py-3 text-lg font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition duration-150 shadow-md"
-              disabled={isLoading || !tokenClient}
+              disabled={isLoading || !tokenClient} // Disable if still loading or tokenClient not ready
             >
               {FIELD_LABELS_TH.SIGN_IN_WITH_GOOGLE}
             </button>
@@ -675,8 +683,9 @@ const App: React.FC = () => {
               {FIELD_LABELS_TH.SIGN_OUT_GOOGLE}
             </button>
           )}
-          {statusMessage && <p className={`mt-3 text-md ${statusMessage.includes('Error') || statusMessage.includes('ข้อผิดพลาด') || statusMessage.includes('mismatch') || statusMessage.includes('Failed') ? 'text-red-600' : 'text-slate-700'}`}>{statusMessage}</p>}
-           {isLoading && statusMessage !== FIELD_LABELS_TH.USING_LOCAL_STORAGE && <p className="text-sm text-sky-600 animate-pulse">{FIELD_LABELS_TH.LOADING_DATA}...</p>}
+          {statusMessage && <p className={`mt-3 text-md ${statusMessage.includes('Error') || statusMessage.includes('ข้อผิดพลาด') || statusMessage.includes('mismatch') || statusMessage.includes('Failed') || statusMessage.includes('ไม่พบ') ? 'text-red-600' : 'text-slate-700'}`}>{statusMessage}</p>}
+           {isLoading && statusMessage !== FIELD_LABELS_TH.USING_LOCAL_STORAGE && (!gisInited || !gapiInited) && <p className="text-sm text-sky-600 animate-pulse">{FIELD_LABELS_TH.LOADING_DATA}...</p>}
+           {isLoading && (isSignedIn || statusMessage === FIELD_LABELS_TH.SYNCING_DATA || statusMessage === FIELD_LABELS_TH.AUTHENTICATED_SEARCHING_SHEET || statusMessage === FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS ) && <p className="text-sm text-sky-600 animate-pulse">{FIELD_LABELS_TH.LOADING_DATA}...</p>}
         </div>
 
         {currentView === ViewMode.List && (
@@ -709,3 +718,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+    
