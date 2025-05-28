@@ -492,23 +492,26 @@ const App: React.FC = () => {
     setStatusMessage(FIELD_LABELS_TH.SYNCING_DATA + ' (กำลังบันทึก...)');
     try {
       const rowData = measurementToRow(finalMeasurement);
-      console.log('[App.tsx] handleSave (Sheets): Data to be saved/updated:', rowData);
-      console.log('[App.tsx] handleSave (Sheets): Measurement rowIndex:', finalMeasurement.rowIndex);
+      // This console.log was already present and good:
+      // console.log('[App.tsx] handleSave (Sheets): Data to be saved/updated:', rowData);
+      // console.log('[App.tsx] handleSave (Sheets): Measurement rowIndex:', finalMeasurement.rowIndex);
 
       if (finalMeasurement.rowIndex && finalMeasurement.id) { 
-        console.log(`[App.tsx] handleSave (Sheets): Attempting to UPDATE existing row ${finalMeasurement.rowIndex} in sheet ID ${userSpreadsheetId}. Range: ${SHEET_NAME}!A${finalMeasurement.rowIndex}`);
+        const range = `${SHEET_NAME}!A${finalMeasurement.rowIndex}`;
+        console.log(`[App.tsx] handleSave (Sheets): Attempting to UPDATE. SpreadsheetId: ${userSpreadsheetId}, Range: ${range}, Data:`, rowData);
         const updateResponse = await window.gapi.client.sheets.spreadsheets.values.update({
           spreadsheetId: userSpreadsheetId,
-          range: `${SHEET_NAME}!A${finalMeasurement.rowIndex}`, // Assuming ID is in column A and determines the start.
+          range: range,
           valueInputOption: 'USER_ENTERED',
           resource: { values: [rowData] },
         });
         console.log('[App.tsx] handleSave (Sheets): Update response:', updateResponse);
       } else { 
-        console.log(`[App.tsx] handleSave (Sheets): Attempting to APPEND new row to sheet ID ${userSpreadsheetId}.`);
+        const range = `${SHEET_NAME}!A1`;
+        console.log(`[App.tsx] handleSave (Sheets): Attempting to APPEND. SpreadsheetId: ${userSpreadsheetId}, Range for append: ${range}, Data:`, rowData);
         const appendResponse = await window.gapi.client.sheets.spreadsheets.values.append({
           spreadsheetId: userSpreadsheetId,
-          range: `${SHEET_NAME}!A1`, 
+          range: range, 
           valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
           resource: { values: [rowData] },
@@ -534,8 +537,6 @@ const App: React.FC = () => {
       console.error('[App.tsx] handleSave (Sheets): Error saving measurement to Google Sheets:', JSON.stringify(error, null, 2));
       const errMessage = error.result?.error?.message || error.message || 'Unknown error during save';
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${errMessage}`);
-      // Consider not changing view or editingMeasurement if save fails, allowing user to retry.
-      // Or, provide a clear "retry" option. For now, it falls through and sets isLoading false.
     }
     setCurrentView(ViewMode.List);
     setEditingMeasurement(null);
