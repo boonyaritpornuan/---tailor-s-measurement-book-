@@ -123,7 +123,7 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error('[App.tsx] findOrCreateUserSpreadsheet: Error finding or creating spreadsheet:', JSON.stringify(error, null, 2));
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_DRIVE_OPERATION}: ${error.result?.error?.message || error.message}`);
-      await updateUiBasedOnAuthState(null); 
+      await updateUiBasedOnAuthState(null);
     }
     setIsLoading(false);
   }, [gapiInited, loadMeasurementsFromLocalStorage]); // Removed internal calls from deps, added loadMeasurementsFromLocalStorage for fallback.
@@ -137,9 +137,7 @@ const App: React.FC = () => {
         setAccessToken(newAccessToken);
     }
 
-    // Use the newAccessToken if provided, otherwise use the existing accessToken from state.
-    // This allows the function to react to fresh tokens or refresh based on existing state if called with null.
-    const tokenToUse = newAccessToken; // Prioritize the fresh token if it's passed. If null, means sign-out or refresh.
+    const tokenToUse = newAccessToken;
 
     console.log(`[App.tsx] updateUiBasedOnAuthState: Effective tokenToUse: ${tokenToUse ? 'Exists' : 'Null'}. Proceeding with gapiInited: ${gapiInited}`);
 
@@ -155,7 +153,7 @@ const App: React.FC = () => {
             setIsSignedIn(false);
             setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_CLIENT_UNEXPECTED);
             loadMeasurementsFromLocalStorage();
-            setIsLoading(false); // Ensure loading stops
+            setIsLoading(false);
             return;
         }
       }
@@ -163,14 +161,14 @@ const App: React.FC = () => {
       await findOrCreateUserSpreadsheet(tokenToUse);
     } else if (tokenToUse && !gapiInited) {
       console.log('[App.tsx] updateUiBasedOnAuthState: Token exists but GAPI NOT YET initialized. Setting signedIn, status "Authenticated with Google. Initializing API services..."');
-      setIsSignedIn(true); // Tentatively true, Google auth happened
-      setStatusMessage(FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS); // More specific message
-      setIsLoading(true); // Still loading GAPI
-    } else { // No token (tokenToUse is null)
+      setIsSignedIn(true);
+      setStatusMessage(FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS);
+      setIsLoading(true);
+    } else { 
       console.log('[App.tsx] updateUiBasedOnAuthState: No token. Setting signedOut, using local storage.');
       setIsSignedIn(false);
       setUserSpreadsheetId(null);
-      setAccessToken(null); // Explicitly clear accessToken state on sign-out
+      setAccessToken(null); 
       if (window.gapi?.client) {
          console.log('[App.tsx] updateUiBasedOnAuthState: Clearing token for gapi.client.');
          window.gapi.client.setToken(null);
@@ -222,11 +220,10 @@ const App: React.FC = () => {
         },
       });
       setTokenClient(client);
-      // This logic might be redundant if updateUiBasedOnAuthState handles all cases
-      if(gapiInited && !accessToken) { 
+      if(gapiInited && !accessToken) {
         console.log('[App.tsx] GIS onload: GAPI inited but no access token. Calling updateUiBasedOnAuthState(null).');
         updateUiBasedOnAuthState(null);
-      } else if (!gapiInited && !accessToken) { 
+      } else if (!gapiInited && !accessToken) {
         console.log('[App.tsx] GIS onload: Neither GAPI inited nor access token. Setting loading status.');
         setStatusMessage(FIELD_LABELS_TH.LOADING_APP_DATA + " (Google API)...");
         setIsLoading(true);
@@ -239,11 +236,21 @@ const App: React.FC = () => {
       if (gapiScript.parentNode) gapiScript.parentNode.removeChild(gapiScript);
       if (gisScript.parentNode) gisScript.parentNode.removeChild(gisScript);
     };
-  }, []); // Keep empty for one-time script loading. initializeGapiClient & updateUiBasedOnAuthState are stable or managed internally.
+  }, []);
 
   const initializeGapiClient = useCallback(async () => {
     console.log('[App.tsx] initializeGapiClient: Starting GAPI client initialization.');
     setStatusMessage(FIELD_LABELS_TH.GAPI_INITIALIZING);
+
+    if (!window.gapi?.client?.init) {
+        console.error('[App.tsx] initializeGapiClient: window.gapi.client.init is not available. GAPI client library or "client" module may not have loaded correctly.');
+        setStatusMessage(FIELD_LABELS_TH.ERROR_GAPI_CLIENT_INIT_NOT_FOUND);
+        setIsLoading(false);
+        setGapiInited(false); 
+        await updateUiBasedOnAuthState(null); // Fallback to local storage if GAPI is fundamentally broken
+        return;
+    }
+
     console.time("gapiClientInit");
     try {
       await window.gapi.client.init({
@@ -258,14 +265,12 @@ const App: React.FC = () => {
       setStatusMessage(FIELD_LABELS_TH.GAPI_INIT_SUCCESS);
 
       const gapiTokenInfo = window.gapi.client.getToken?.();
-      // Use the accessToken from React state, as it should be the latest from GIS if sign-in happened.
-      // If GAPI has a token and React state doesn't, that's an unusual state but could happen if GAPI persisted it.
-      const tokenForUpdate = accessToken || gapiTokenInfo?.access_token; 
+      const tokenForUpdate = accessToken || gapiTokenInfo?.access_token;
       console.log(`[App.tsx] initializeGapiClient: Token for updateUiBasedOnAuthState after GAPI init: ${tokenForUpdate ? 'Exists' : 'Null'}`);
       await updateUiBasedOnAuthState(tokenForUpdate);
 
     } catch (error: any) {
-      console.timeEnd("gapiClientInit"); // Call on error too, if it started
+      console.timeEnd("gapiClientInit"); 
       console.error('[App.tsx] initializeGapiClient: Error initializing Google API client:', JSON.stringify(error, null, 2));
       let detailedErrorMessage = 'Unknown error during GAPI init.';
       if (error.result && error.result.error) {
@@ -293,14 +298,14 @@ const App: React.FC = () => {
         console.log('[App.tsx] handleAuthClick: Setting actionRequiresAuth.');
         setActionRequiresAuth(() => callback);
     }
-    const promptValue = accessToken ? 'consent' : ''; // If already signed in, prompt for consent to ensure fresh scopes if needed.
+    const promptValue = accessToken ? 'consent' : ''; 
     console.log(`[App.tsx] handleAuthClick: Requesting access token with prompt: '${promptValue}'`);
     tokenClient.requestAccessToken({ prompt: promptValue });
   };
 
   const handleSignoutClick = () => {
     console.log('[App.tsx] handleSignoutClick: Initiating sign-out.');
-    const currentTokenToRevoke = accessToken; // Use the token from state
+    const currentTokenToRevoke = accessToken; 
     if (currentTokenToRevoke && window.google?.accounts?.oauth2?.revoke) {
       console.log('[App.tsx] handleSignoutClick: Revoking token.');
       window.google.accounts.oauth2.revoke(currentTokenToRevoke, async () => {
@@ -376,9 +381,7 @@ const App: React.FC = () => {
     if (!token || !gapiInited || !spreadsheetIdToUse) {
       console.warn(`[App.tsx] loadMeasurementsFromSheet: Aborted due to missing token, GAPI init status (${gapiInited}), or spreadsheetId.`);
       setIsLoading(false);
-      // If called inappropriately (e.g. no token and no gapi), ensure it falls back.
-      // updateUiBasedOnAuthState should handle the main fallback if token is null.
-      if (!token && !isSignedIn) { // If there's no token and user is not signed in, fallback to local
+      if (!token && !isSignedIn) { 
          loadMeasurementsFromLocalStorage();
       }
       return;
@@ -389,55 +392,50 @@ const App: React.FC = () => {
     try {
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: spreadsheetIdToUse,
-        range: `${SHEET_NAME}!A:AZ`, // Read all columns
+        range: `${SHEET_NAME}!A:AZ`, 
       });
       console.log('[App.tsx] loadMeasurementsFromSheet: Sheets values.get response:', response);
       const values = response.result.values;
-      if (values && values.length > 0) { // Check if there's at least a header row
+      if (values && values.length > 0) { 
         const headerRow = values[0];
         if(JSON.stringify(headerRow) !== JSON.stringify(SHEET_FIELD_ORDER)) {
             console.warn("[App.tsx] loadMeasurementsFromSheet: Sheet header mismatch. Expected:", SHEET_FIELD_ORDER, "Got:", headerRow, "Attempting to fix headers.");
             setStatusMessage(FIELD_LABELS_TH.ERROR_SHEET_HEADER_MISMATCH_ATTEMPT_FIX);
             await setupSheetHeaders(token, spreadsheetIdToUse);
-            // It's crucial to reload after fixing headers.
             console.log("[App.tsx] loadMeasurementsFromSheet: Retrying loadMeasurementsFromSheet after header fix attempt.");
-            await loadMeasurementsFromSheet(token, spreadsheetIdToUse); // Recursive call to reload
-            return; // Important to exit here to avoid processing stale data
+            await loadMeasurementsFromSheet(token, spreadsheetIdToUse); 
+            return; 
         }
-        // If headers are okay, process data (if any beyond headers)
         const loadedMeasurements = values.slice(1)
-          .map((row, index) => rowToMeasurement(row, index + 2)) // index + 2 because sheets are 1-indexed and we sliced header
-          .filter(m => m.id); // Ensure items have an ID
+          .map((row, index) => rowToMeasurement(row, index + 2)) 
+          .filter(m => m.id); 
         setMeasurements(loadedMeasurements);
         setStatusMessage(loadedMeasurements.length > 0 ? FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS : FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE})`);
-      } else { // No data at all (not even a header row, or an empty sheet was returned)
+      } else { 
         console.log(`[App.tsx] loadMeasurementsFromSheet: No values found in sheet "${SHEET_NAME}". Assuming empty sheet or needs headers.`);
         setMeasurements([]);
         setStatusMessage(FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE}) - ${FIELD_LABELS_TH.ERROR_EMPTY_RESPONSE}`);
-        await setupSheetHeaders(token, spreadsheetIdToUse); // Attempt to set up headers if sheet is completely empty
+        await setupSheetHeaders(token, spreadsheetIdToUse); 
       }
     } catch (error: any) {
       console.error('[App.tsx] loadMeasurementsFromSheet: Error loading measurements from Google Sheets:', JSON.stringify(error, null, 2));
       const errorMessage = error.result?.error?.message || error.message || 'Unknown error';
       if (error.result?.error?.status === 'NOT_FOUND' || errorMessage.toLowerCase().includes('requested entity was not found') || (error.result?.error?.code === 400 && errorMessage.toLowerCase().includes('unable to parse range'))) {
-        // 400 error with "Unable to parse range" often means the SHEET_NAME doesn't exist.
         console.warn(`[App.tsx] loadMeasurementsFromSheet: Sheet tab "${SHEET_NAME}" likely not found or error parsing range. Attempting to create/fix headers.`);
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: Sheet tab "${SHEET_NAME}" not found. Attempting to create.`);
         await setupSheetHeaders(token, spreadsheetIdToUse); 
-        // It's crucial to reload after fixing headers.
         console.log("[App.tsx] loadMeasurementsFromSheet: Retrying loadMeasurementsFromSheet after potential sheet creation.");
-        await loadMeasurementsFromSheet(token, spreadsheetIdToUse); // Recursive call to reload
+        await loadMeasurementsFromSheet(token, spreadsheetIdToUse); 
         return;
       } else if (error.result?.error?.code === 403 && error.result?.error?.status === "PERMISSION_DENIED"){
          console.warn('[App.tsx] loadMeasurementsFromSheet: Permission denied for Google Sheets.');
          setStatusMessage(`${FIELD_LABELS_TH.ERROR_PERMISSION_DENIED_SHEETS}`);
-         handleAuthClick(); // Prompt for re-authentication
+         handleAuthClick(); 
       }
       else {
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${errorMessage}`);
-        // Fallback to local storage if Sheets loading fails for other reasons
         console.warn('[App.tsx] loadMeasurementsFromSheet: Unhandled Sheets error, falling back to local storage.');
-        updateUiBasedOnAuthState(null); // This will trigger local storage load
+        updateUiBasedOnAuthState(null); 
       }
     }
     setIsLoading(false);
@@ -455,10 +453,9 @@ const App: React.FC = () => {
       setStatusMessage(FIELD_LABELS_TH.SAVING_TO_LOCAL_STORAGE_SIGN_IN_PROMPT);
       if (!isSignedIn) {
           console.log('[App.tsx] handleSave: User not signed in. Prompting for auth.');
-          handleAuthClick(() => handleSave(measurementToSave)); // Pass the save action to be run after auth
+          handleAuthClick(() => handleSave(measurementToSave)); 
           return;
       }
-      // If signed in but other conditions fail (e.g. !userSpreadsheetId after GAPI init)
       setMeasurements(prev => {
         const existingIndex = prev.findIndex(m => m.id === finalMeasurement.id);
         let updatedMeasurements;
@@ -482,7 +479,7 @@ const App: React.FC = () => {
     setStatusMessage(FIELD_LABELS_TH.SYNCING_DATA);
     try {
       const rowData = measurementToRow(finalMeasurement);
-      if (finalMeasurement.rowIndex && finalMeasurement.id) { // Existing record, update it
+      if (finalMeasurement.rowIndex && finalMeasurement.id) { 
         console.log(`[App.tsx] handleSave: Updating existing row ${finalMeasurement.rowIndex} in sheet.`);
         await window.gapi.client.sheets.spreadsheets.values.update({
           spreadsheetId: userSpreadsheetId,
@@ -490,19 +487,18 @@ const App: React.FC = () => {
           valueInputOption: 'USER_ENTERED',
           resource: { values: [rowData] },
         });
-      } else { // New record, append it
+      } else { 
         console.log(`[App.tsx] handleSave: Appending new row to sheet.`);
         const appendResponse = await window.gapi.client.sheets.spreadsheets.values.append({
           spreadsheetId: userSpreadsheetId,
-          range: `${SHEET_NAME}!A1`, // Append after the last row with data in this sheet
+          range: `${SHEET_NAME}!A1`, 
           valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
           resource: { values: [rowData] },
         });
-        // Try to get the new rowIndex from the response to update the local object if needed.
         const updatedRange = appendResponse.result.updates?.updatedRange;
         if (updatedRange) {
-          const match = updatedRange.match(/!A(\d+):/); // Example: 'Sheet1!A10:C10'
+          const match = updatedRange.match(/!A(\d+):/); 
           if (match && match[1]) {
             finalMeasurement.rowIndex = parseInt(match[1], 10);
             console.log(`[App.tsx] handleSave: New row appended at rowIndex: ${finalMeasurement.rowIndex}`);
@@ -510,11 +506,10 @@ const App: React.FC = () => {
         }
       }
       setStatusMessage(FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS);
-      await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); // Reload all data to ensure consistency
+      await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); 
     } catch (error: any) {
       console.error('[App.tsx] handleSave: Error saving measurement to Google Sheets:', JSON.stringify(error, null, 2));
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${error.result?.error?.message || error.message}`);
-      // Fallback or retry could be added here. For now, it shows an error and local data might be more current.
     }
     setCurrentView(ViewMode.List);
     setEditingMeasurement(null);
@@ -555,7 +550,7 @@ const App: React.FC = () => {
       setStatusMessage(FIELD_LABELS_TH.DELETING_FROM_LOCAL_STORAGE_SIGN_IN_PROMPT);
       if(!isSignedIn){
         console.log('[App.tsx] handleDelete: User not signed in. Prompting for auth.');
-        handleAuthClick(() => handleDelete(id)); // Pass the delete action
+        handleAuthClick(() => handleDelete(id)); 
         return;
       }
       const updatedLocalMeasurements = measurements.filter(m => m.id !== id);
@@ -570,7 +565,6 @@ const App: React.FC = () => {
     try {
       const sheetNumericId = await getSheetIdByTitle(userSpreadsheetId, SHEET_NAME);
       if (sheetNumericId === undefined) {
-        // This case should ideally not happen if sheet was created/found properly.
         throw new Error(`Could not find sheet ID for "${SHEET_NAME}" to delete row. Aborting delete.`);
       }
       console.log(`[App.tsx] handleDelete: Deleting row ${measurementToDelete.rowIndex} (0-indexed: ${measurementToDelete.rowIndex - 1}) from sheet with numericId ${sheetNumericId}.`);
@@ -582,7 +576,7 @@ const App: React.FC = () => {
               range: {
                 sheetId: sheetNumericId,
                 dimension: 'ROWS',
-                startIndex: measurementToDelete.rowIndex - 1, // API is 0-indexed for startIndex
+                startIndex: measurementToDelete.rowIndex - 1, 
                 endIndex: measurementToDelete.rowIndex,
               },
             },
@@ -590,7 +584,7 @@ const App: React.FC = () => {
         },
       });
       setStatusMessage(FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS);
-      await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); // Reload data
+      await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); 
     } catch (error: any) {
       console.error('[App.tsx] handleDelete: Error deleting measurement from Google Sheets:', JSON.stringify(error, null, 2));
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${error.result?.error?.message || error.message || String(error)}`);
@@ -601,7 +595,7 @@ const App: React.FC = () => {
 
   const handleAddNew = () => {
     console.log('[App.tsx] handleAddNew: Navigating to form for new measurement.');
-    setEditingMeasurement({ ...initialMeasurementState, id: '' }); // Ensure ID is empty for new
+    setEditingMeasurement({ ...initialMeasurementState, id: '' }); 
     setCurrentView(ViewMode.Form);
   };
 
@@ -617,17 +611,11 @@ const App: React.FC = () => {
     setEditingMeasurement(null);
   };
 
-  // Sort measurements primarily by date (newest first), then by original sheet order (rowIndex) if dates are same
   const sortedMeasurements = [...measurements].sort((a,b) => {
     const dateA = new Date(a.measurementDate || 0).getTime();
     const dateB = new Date(b.measurementDate || 0).getTime();
-    if (dateB !== dateA) return dateB - dateA; // Newest date first
-    
-    // If dates are the same, maintain original order from sheet if possible
-    // Lower rowIndex means it appeared earlier in the sheet
+    if (dateB !== dateA) return dateB - dateA; 
     if(a.rowIndex && b.rowIndex && a.rowIndex !== b.rowIndex) return (a.rowIndex < b.rowIndex) ? -1 : 1; 
-    
-    // Fallback sort by ID if dates are same and rowIndex is not available or same
     if (a.id && b.id) return (a.id < b.id) ? -1 : 1; 
     return 0;
   });
