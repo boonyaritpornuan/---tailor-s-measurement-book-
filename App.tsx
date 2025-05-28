@@ -11,6 +11,15 @@ const SHEET_NAME = 'CustomerData';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
 const LOCAL_STORAGE_KEY = 'tailorMeasurementsApp_localStorageFallback';
 
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: Array<string>;
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed',
+    platform: string
+  }>;
+  prompt(): Promise<void>;
+}
+
 const rowToMeasurement = (row: any[], rowIndex: number): CustomerMeasurement => {
   const measurement: Partial<CustomerMeasurement> = {};
   SHEET_FIELD_ORDER.forEach((key, index) => {
@@ -50,6 +59,61 @@ const App: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(FIELD_LABELS_TH.LOADING_APP_DATA);
   const [actionRequiresAuth, setActionRequiresAuth] = useState<(() => void) | null>(null);
 
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [appInstallStatusMessage, setAppInstallStatusMessage] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      console.log('[App.tsx] beforeinstallprompt event fired');
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+      setShowInstallBanner(true);
+      setStatusMessage(FIELD_LABELS_TH.APP_INSTALL_AVAILABLE); // Notify user it's installable
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    const handleAppInstalled = () => {
+      console.log('[App.tsx] appinstalled event fired');
+      setDeferredInstallPrompt(null);
+      setShowInstallBanner(false);
+      setAppInstallStatusMessage(FIELD_LABELS_TH.APP_INSTALL_SUCCESS);
+      setTimeout(() => setAppInstallStatusMessage(null), 5000); // Clear message after 5s
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallAppClick = async () => {
+    if (!deferredInstallPrompt) {
+      console.warn('[App.tsx] handleInstallAppClick: No deferredInstallPrompt available.');
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    console.log(`[App.tsx] User choice for app install: ${outcome}`);
+    if (outcome === 'accepted') {
+      setAppInstallStatusMessage(FIELD_LABELS_TH.APP_INSTALL_SUCCESS);
+      setTimeout(() => setAppInstallStatusMessage(null), 5000);
+    } else {
+      // User dismissed the prompt, maybe log or handle this.
+      // The banner is hidden regardless.
+    }
+    setDeferredInstallPrompt(null);
+    setShowInstallBanner(false);
+  };
+
+  const handleDismissInstallBannerClick = () => {
+    setShowInstallBanner(false);
+    // Optionally, store a flag in localStorage to not show again for some time
+  };
 
   const loadMeasurementsFromLocalStorage = useCallback(() => {
     console.log('[App.tsx] loadMeasurementsFromLocalStorage: Loading data.');
@@ -88,7 +152,7 @@ const App: React.FC = () => {
     } else {
       setStatusMessage(FIELD_LABELS_TH.SIGNED_OUT_USING_LOCAL);
     }
-    loadMeasurementsFromLocalStorage(); // Load local data after sign out
+    loadMeasurementsFromLocalStorage(); 
   }, [loadMeasurementsFromLocalStorage]);
 
   const handleSignoutClick = useCallback((isAutoSignoutDueToError: boolean = false) => {
@@ -144,8 +208,7 @@ const App: React.FC = () => {
         handleSignoutClick(true);
       } else {
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_DRIVE_OPERATION}: ${error.result?.error?.message || error.message}`);
-        // Consider a more graceful fallback or retry mechanism
-        setIsSignedIn(false); setAccessToken(null); // Fallback to signed out state
+        setIsSignedIn(false); setAccessToken(null); 
       }
     }
   }, [gapiInited, handleSignoutClick]);
@@ -156,7 +219,7 @@ const App: React.FC = () => {
     if (tokenResponse && tokenResponse.access_token) {
       console.log('[App.tsx] onTokenResponse: Access token received.');
       const newAccessToken = tokenResponse.access_token;
-      const expiresIn = tokenResponse.expires_in || 3600; // Default to 1 hour
+      const expiresIn = tokenResponse.expires_in || 3600; 
       const expiryTime = Date.now() + expiresIn * 1000;
 
       setAccessToken(newAccessToken);
@@ -174,7 +237,7 @@ const App: React.FC = () => {
     } else {
       console.error('[App.tsx] onTokenResponse: Token response error or access_token missing.', tokenResponse);
       setStatusMessage(FIELD_LABELS_TH.ERROR_AUTHENTICATING);
-      handleSignoutLogic(true); // Treat as an error leading to sign out
+      handleSignoutLogic(true); 
     }
   }, [actionRequiresAuth, handleSignoutLogic]);
 
@@ -197,10 +260,6 @@ const App: React.FC = () => {
       console.timeEnd("gapiClientInit");
       console.log('[App.tsx] initializeGapiClient: GAPI client initialized successfully.');
       setGapiInited(true);
-      // If GIS is also ready and no access token yet (not restored from localStorage and no new login yet)
-      // then this indicates readiness for user to click sign-in, or app uses local storage.
-      // The main reactive useEffect will handle this.
-      // If a token WAS restored from localStorage, the main useEffect will use it once GAPI is inited.
     } catch (error: any) {
       console.timeEnd("gapiClientInit"); 
       console.error('[App.tsx] initializeGapiClient: Error initializing Google API client:', JSON.stringify(error, null, 2));
@@ -237,9 +296,6 @@ const App: React.FC = () => {
       }
     }
     
-    // If no session restored, and scripts not yet loaded, initial loading state will be handled by later effects.
-    // This effect primarily focuses on one-time script setup and initial localStorage check.
-
     const gapiScript = document.createElement('script');
     gapiScript.src = "https://apis.google.com/js/api.js";
     gapiScript.async = true;
@@ -278,12 +334,10 @@ const App: React.FC = () => {
         });
         setTokenClient(client);
         setGisInited(true);
-        // If no session was restored and GAPI is also ready, means user needs to sign in or uses local.
         if (!sessionRestoredFromLocalStorage && gapiInited) {
              setIsLoading(false);
-             // Status message will be set by the other useEffect based on isSignedIn state
         } else if (!sessionRestoredFromLocalStorage && !gapiInited) {
-            // Still waiting for GAPI, isLoading remains true.
+            // Still waiting for GAPI
         }
       } else {
         console.error('[App.tsx] GIS script loaded, but window.google.accounts.oauth2 not found.');
@@ -324,7 +378,7 @@ const App: React.FC = () => {
       console.log('[App.tsx] useEffect[isSigned...]: Not signed in, but scripts ready. Using local storage.');
       if (window.gapi?.client) window.gapi.client.setToken(null);
       setUserSpreadsheetId(null);
-      loadMeasurementsFromLocalStorage(); // This will also set isLoading(false)
+      loadMeasurementsFromLocalStorage(); 
       setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE);
     } else if (isSignedIn && accessToken && !gapiInited) {
       console.log('[App.tsx] useEffect[isSigned...]: Signed in, token present, but GAPI not yet ready. Waiting...');
@@ -332,7 +386,7 @@ const App: React.FC = () => {
       setIsLoading(true);
     } else if (!gapiInited || !gisInited) {
         console.log('[App.tsx] useEffect[isSigned...]: Scripts (GAPI or GIS or both) not yet loaded/initialized. Waiting...');
-        setIsLoading(true); // Ensure loading is true while scripts are pending
+        setIsLoading(true); 
         if(!accessToken) setStatusMessage(FIELD_LABELS_TH.LOADING_APP_DATA + " (Google API)...");
     }
   }, [isSignedIn, accessToken, gapiInited, findOrCreateUserSpreadsheet, loadMeasurementsFromLocalStorage, gisInited]);
@@ -348,12 +402,8 @@ const App: React.FC = () => {
         console.log('[App.tsx] handleAuthClick: Setting actionRequiresAuth.');
         setActionRequiresAuth(() => callback);
     }
-    // Prompt for consent only if no token or if specifically needed for re-auth.
-    // For initial sign-in, prompt is usually not needed if user previously consented to scopes.
-    // Forcing prompt with 'consent' can be used if scopes change or re-verification is desired.
-    // For now, let GIS handle default prompt behavior.
     console.log(`[App.tsx] handleAuthClick: Requesting access token.`);
-    tokenClient.requestAccessToken({ prompt: '' }); // Empty prompt for default behavior
+    tokenClient.requestAccessToken({ prompt: '' }); 
   };
 
   const saveMeasurementsToLocalStorage = (currentMeasurements: CustomerMeasurement[]) => {
@@ -433,7 +483,6 @@ const App: React.FC = () => {
         await loadMeasurementsFromSheet(token, spreadsheetIdToUse); return;
       } else {
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: ${errorMessage}`);
-        // Potentially more robust error handling or fallback
       }
     }
     setIsLoading(false);
@@ -599,14 +648,46 @@ const App: React.FC = () => {
               {FIELD_LABELS_TH.SIGN_OUT_GOOGLE}
             </button>
           )}
-          {statusMessage && (!isLoading || (isLoading && (statusMessage.includes('Error') || statusMessage.includes('หมดอายุ') || statusMessage.includes('กู้คืน') || statusMessage === FIELD_LABELS_TH.USING_LOCAL_STORAGE || statusMessage === FIELD_LABELS_TH.SIGNED_OUT_USING_LOCAL))) &&
+          {statusMessage && (!isLoading || (isLoading && (statusMessage.includes('Error') || statusMessage.includes('ข้อผิดพลาด') || statusMessage.includes('หมดอายุ') || statusMessage.includes('กู้คืน') || statusMessage === FIELD_LABELS_TH.USING_LOCAL_STORAGE || statusMessage === FIELD_LABELS_TH.SIGNED_OUT_USING_LOCAL || statusMessage === FIELD_LABELS_TH.APP_INSTALL_AVAILABLE))) &&
             <p className={`mt-3 text-md ${statusMessage.includes('Error') || statusMessage.includes('ข้อผิดพลาด') || statusMessage.includes('หมดอายุ') || statusMessage.includes('mismatch') || statusMessage.includes('Failed') || statusMessage.includes('ไม่พบ') ? 'text-red-600' : 'text-slate-700'}`}>{statusMessage}</p>
           }
            {isLoading && (isSignedIn || statusMessage === FIELD_LABELS_TH.SYNCING_DATA || statusMessage === FIELD_LABELS_TH.AUTHENTICATED_SEARCHING_SHEET || statusMessage === FIELD_LABELS_TH.AUTHENTICATED_INITIALIZING_APIS || statusMessage === FIELD_LABELS_TH.SESSION_RESTORED_LOADING_DATA ) && 
-             (!statusMessage.includes('Error') && !statusMessage.includes('หมดอายุ') && !statusMessage.includes('กู้คืน') && statusMessage !== FIELD_LABELS_TH.USING_LOCAL_STORAGE && statusMessage !== FIELD_LABELS_TH.SIGNED_OUT_USING_LOCAL) &&
+             (!statusMessage.includes('Error') && !statusMessage.includes('หมดอายุ') && !statusMessage.includes('กู้คืน') && statusMessage !== FIELD_LABELS_TH.USING_LOCAL_STORAGE && statusMessage !== FIELD_LABELS_TH.SIGNED_OUT_USING_LOCAL && statusMessage !== FIELD_LABELS_TH.APP_INSTALL_AVAILABLE) &&
              <p className="text-sm text-sky-600 animate-pulse">{FIELD_LABELS_TH.LOADING_DATA}...</p>
            }
+           {appInstallStatusMessage && (
+             <p className="mt-2 text-lg text-green-600 font-semibold">{appInstallStatusMessage}</p>
+           )}
         </div>
+
+        {/* Custom Install Banner */}
+        {showInstallBanner && deferredInstallPrompt && (
+          <div className="fixed bottom-0 left-0 right-0 bg-sky-600 text-white p-4 shadow-lg z-50 transform transition-transform duration-300 ease-out translate-y-0">
+            <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between">
+              <div className='text-center sm:text-left mb-3 sm:mb-0'>
+                <h4 className="text-xl font-semibold">{FIELD_LABELS_TH.INSTALL_APP_PROMPT_TITLE}</h4>
+                <p className="text-sm opacity-90">{FIELD_LABELS_TH.INSTALL_APP_DESCRIPTION}</p>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleInstallAppClick}
+                  className="px-6 py-2.5 text-lg font-medium rounded-lg bg-white text-sky-700 hover:bg-sky-100 transition duration-150 shadow"
+                  aria-label={FIELD_LABELS_TH.INSTALL_APP_BUTTON}
+                >
+                  {FIELD_LABELS_TH.INSTALL_APP_BUTTON}
+                </button>
+                <button
+                  onClick={handleDismissInstallBannerClick}
+                  className="px-4 py-2.5 text-lg font-medium rounded-lg text-white hover:bg-sky-500 transition duration-150"
+                  aria-label={FIELD_LABELS_TH.INSTALL_APP_LATER_BUTTON}
+                >
+                  {FIELD_LABELS_TH.INSTALL_APP_LATER_BUTTON}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {currentView === ViewMode.List && (
           <MeasurementList
