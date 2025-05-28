@@ -112,5 +112,6 @@ export const FIELD_LABELS_TH = {
   GAPI_INIT_SUCCESS: 'Google API Client Libraries เริ่มต้นสำเร็จแล้ว',
   AUTHENTICATED_INITIALIZING_APIS: 'ยืนยันตัวตนกับ Google สำเร็จ กำลังเตรียมบริการ API...',
   ERROR_GAPI_CLIENT_UNEXPECTED: 'ข้อผิดพลาด: Google API Client ไม่พร้อมใช้งานหลังจากเริ่มต้นแล้ว',
-  ERROR_GAPI_CLIENT_INIT_NOT_FOUND: 'ข้อผิดพลาดร้ายแรง: ไม่พบ gapi.client.init โปรดรีเฟรชหน้า หรือตรวจสอบการเชื่อมต่อ/ส่วนขยายเบราว์เซอร์'
+  ERROR_GAPI_CLIENT_INIT_NOT_FOUND: 'ข้อผิดพลาดร้ายแรง: ไม่พบ gapi.client.init โปรดรีเฟรชหน้า หรือตรวจสอบการเชื่อมต่อ/ส่วนขยายเบราว์เซอร์',
+  ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND: 'ข้อผิดพลาด: ฟังก์ชัน gapi.load ไม่พร้อมใช้งาน GAPI library อาจโหลดไม่ถูกต้อง'
 };
