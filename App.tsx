@@ -66,11 +66,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
-      console.log('[App.tsx] beforeinstallprompt event fired');
+      console.log('[App.tsx] beforeinstallprompt event fired. Current deferredInstallPrompt:', deferredInstallPrompt);
       event.preventDefault();
       setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
       setShowInstallBanner(true);
-      setStatusMessage(FIELD_LABELS_TH.APP_INSTALL_AVAILABLE); // Notify user it's installable
+      setStatusMessage(FIELD_LABELS_TH.APP_INSTALL_AVAILABLE); 
+      console.log('[App.tsx] beforeinstallprompt: deferredInstallPrompt set, showInstallBanner set to true.');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -80,7 +81,7 @@ const App: React.FC = () => {
       setDeferredInstallPrompt(null);
       setShowInstallBanner(false);
       setAppInstallStatusMessage(FIELD_LABELS_TH.APP_INSTALL_SUCCESS);
-      setTimeout(() => setAppInstallStatusMessage(null), 5000); // Clear message after 5s
+      setTimeout(() => setAppInstallStatusMessage(null), 5000); 
     };
 
     window.addEventListener('appinstalled', handleAppInstalled);
@@ -89,7 +90,7 @@ const App: React.FC = () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [deferredInstallPrompt]);
 
   const handleInstallAppClick = async () => {
     if (!deferredInstallPrompt) {
@@ -104,7 +105,6 @@ const App: React.FC = () => {
       setTimeout(() => setAppInstallStatusMessage(null), 5000);
     } else {
       // User dismissed the prompt, maybe log or handle this.
-      // The banner is hidden regardless.
     }
     setDeferredInstallPrompt(null);
     setShowInstallBanner(false);
@@ -184,17 +184,21 @@ const App: React.FC = () => {
         q: `name='${USER_SPREADSHEET_FILENAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
         fields: 'files(id, name)', spaces: 'drive',
       });
+      console.log('[App.tsx] findOrCreateUserSpreadsheet: Drive files.list response:', driveResponse);
       if (driveResponse.result.files && driveResponse.result.files.length > 0) {
         const foundFileId = driveResponse.result.files[0].id;
+        console.log('[App.tsx] findOrCreateUserSpreadsheet: Found existing spreadsheet with ID:', foundFileId);
         setUserSpreadsheetId(foundFileId);
         await loadMeasurementsFromSheet(token, foundFileId);
       } else {
+        console.log('[App.tsx] findOrCreateUserSpreadsheet: No existing spreadsheet found. Creating new one.');
         setStatusMessage(FIELD_LABELS_TH.SPREADSHEET_NOT_FOUND_CREATING);
         const createResponse = await window.gapi.client.drive.files.create({
           resource: { name: USER_SPREADSHEET_FILENAME, mimeType: 'application/vnd.google-apps.spreadsheet' },
           fields: 'id',
         });
         const newFileId = createResponse.result.id;
+        console.log('[App.tsx] findOrCreateUserSpreadsheet: Created new spreadsheet with ID:', newFileId);
         setUserSpreadsheetId(newFileId);
         setStatusMessage(FIELD_LABELS_TH.SPREADSHEET_CREATED_SETUP_HEADERS);
         await setupSheetHeaders(token, newFileId);
@@ -261,7 +265,7 @@ const App: React.FC = () => {
       console.log('[App.tsx] initializeGapiClient: GAPI client initialized successfully.');
       setGapiInited(true);
     } catch (error: any) {
-      console.timeEnd("gapiClientInit"); 
+      // console.timeEnd("gapiClientInit"); // Removed from here
       console.error('[App.tsx] initializeGapiClient: Error initializing Google API client:', JSON.stringify(error, null, 2));
       let detailedErrorMessage = error.result?.error?.message || error.details || error.message || 'Unknown error';
       setStatusMessage(`${FIELD_LABELS_TH.ERROR_INITIALIZING_GAPI}: ${detailedErrorMessage}`);
@@ -417,21 +421,30 @@ const App: React.FC = () => {
   };
 
   const setupSheetHeaders = useCallback(async (token: string | null, spreadsheetIdToUse: string | null) => {
-    if (!token || !gapiInited || !spreadsheetIdToUse) return; 
+    console.log('[App.tsx] setupSheetHeaders: Called for spreadsheetId:', spreadsheetIdToUse);
+    if (!token || !gapiInited || !spreadsheetIdToUse) {
+        console.warn('[App.tsx] setupSheetHeaders: Aborted due to missing token, GAPI not inited, or no spreadsheet ID.');
+        return;
+    } 
+    setIsLoading(true); setStatusMessage(FIELD_LABELS_TH.SETTING_UP_SHEET_HEADERS);
     try {
         const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
             spreadsheetId: spreadsheetIdToUse, fields: 'sheets.properties.title',
         });
         const sheetExists = spreadsheet.result.sheets?.some(s => s.properties?.title === SHEET_NAME);
         if (!sheetExists) {
+            console.log(`[App.tsx] setupSheetHeaders: Sheet "${SHEET_NAME}" does not exist. Creating it.`);
             await window.gapi.client.sheets.spreadsheets.batchUpdate({
                 spreadsheetId: spreadsheetIdToUse, resource: { requests: [{ addSheet: { properties: { title: SHEET_NAME } } }] },
             });
         }
+        console.log(`[App.tsx] setupSheetHeaders: Updating headers for sheet "${SHEET_NAME}".`);
         await window.gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: spreadsheetIdToUse, range: `${SHEET_NAME}!A1`, valueInputOption: 'USER_ENTERED',
             resource: { values: [SHEET_FIELD_ORDER] },
         });
+        console.log('[App.tsx] setupSheetHeaders: Headers configured successfully.');
+        setStatusMessage(FIELD_LABELS_TH.HEADERS_CONFIGURED_SUCCESS);
     } catch (error: any) {
         console.error('[App.tsx] setupSheetHeaders: Error setting up sheet headers:', JSON.stringify(error, null, 2));
         const statusCode = error.result?.error?.code;
@@ -442,11 +455,14 @@ const App: React.FC = () => {
             setStatusMessage(`${FIELD_LABELS_TH.ERROR_SETTING_UP_HEADERS}: ${error.result?.error?.message || 'Unknown error'}`);
         }
     }
+    setIsLoading(false);
   }, [gapiInited, handleSignoutClick]);
 
 
   const loadMeasurementsFromSheet = useCallback(async (token: string | null, spreadsheetIdToUse: string | null) => {
+    console.log('[App.tsx] loadMeasurementsFromSheet: Loading data from sheet ID:', spreadsheetIdToUse);
     if (!token || !gapiInited || !spreadsheetIdToUse) {
+      console.warn('[App.tsx] loadMeasurementsFromSheet: Aborted. Token, GAPI, or SpreadsheetID missing.');
       setIsLoading(false); return;
     }
     setIsLoading(true); setStatusMessage(FIELD_LABELS_TH.SYNCING_DATA);
@@ -454,10 +470,12 @@ const App: React.FC = () => {
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: spreadsheetIdToUse, range: `${SHEET_NAME}!A:AZ`, 
       });
+      console.log('[App.tsx] loadMeasurementsFromSheet: Sheets values.get response:', response);
       const values = response.result.values;
       if (values && values.length > 0) { 
         const headerRow = values[0];
         if(JSON.stringify(headerRow) !== JSON.stringify(SHEET_FIELD_ORDER)) {
+            console.warn('[App.tsx] loadMeasurementsFromSheet: Header mismatch. Attempting to fix.');
             setStatusMessage(FIELD_LABELS_TH.ERROR_SHEET_HEADER_MISMATCH_ATTEMPT_FIX);
             await setupSheetHeaders(token, spreadsheetIdToUse);
             await loadMeasurementsFromSheet(token, spreadsheetIdToUse); return; 
@@ -466,6 +484,7 @@ const App: React.FC = () => {
         setMeasurements(loadedMeasurements);
         setStatusMessage(loadedMeasurements.length > 0 ? FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS : FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE})`);
       } else { 
+        console.log('[App.tsx] loadMeasurementsFromSheet: No values found in sheet or sheet is empty. Setting up headers.');
         setMeasurements([]); await setupSheetHeaders(token, spreadsheetIdToUse); 
         setStatusMessage(FIELD_LABELS_TH.NO_RECORDS + ` (${FIELD_LABELS_TH.GOOGLE_SHEETS_STORAGE})`); 
       }
@@ -478,6 +497,7 @@ const App: React.FC = () => {
       if (statusCode === 401 || statusCode === 403 || statusText === 'UNAUTHENTICATED' || statusText === "PERMISSION_DENIED") {
         handleSignoutClick(true);
       } else if (error.result?.error?.status === 'NOT_FOUND' || errorMessage.toLowerCase().includes('requested entity was not found') || (statusCode === 400 && errorMessage.toLowerCase().includes('unable to parse range'))) {
+        console.warn('[App.tsx] loadMeasurementsFromSheet: Sheet not found or range error. Assuming new sheet, setting up headers.');
         setStatusMessage(`${FIELD_LABELS_TH.ERROR_SYNCING_DATA}: Sheet "${SHEET_NAME}" not found. Creating.`);
         await setupSheetHeaders(token, spreadsheetIdToUse); 
         await loadMeasurementsFromSheet(token, spreadsheetIdToUse); return;
@@ -491,16 +511,28 @@ const App: React.FC = () => {
 
   const handleSave = async (measurementToSave: CustomerMeasurement) => {
     setIsLoading(true);
+    console.log('[App.tsx] handleSave: Initiating save for measurement ID:', measurementToSave.id || 'New');
     let finalMeasurement = { ...measurementToSave };
     if (!finalMeasurement.measurementDate) finalMeasurement.measurementDate = new Date().toISOString().split('T')[0];
     if (!finalMeasurement.id) finalMeasurement.id = Date.now().toString();
 
+    console.log('[App.tsx] handleSave: Conditions check:', 
+      `isSignedIn: ${isSignedIn}`, 
+      `accessToken: ${accessToken ? 'Exists' : 'Null'}`, 
+      `gapiInited: ${gapiInited}`, 
+      `userSpreadsheetId: ${userSpreadsheetId || 'Null'}`
+    );
+
     if (!isSignedIn || !accessToken || !gapiInited || !userSpreadsheetId) {
       if (!isSignedIn && tokenClient) {
+          console.log('[App.tsx] handleSave: Not signed in, but tokenClient available. Prompting for auth.');
           setActionRequiresAuth(() => () => handleSave(finalMeasurement));
-          handleAuthClick(); return;
+          handleAuthClick(); 
+          setIsLoading(false); // Stop loading as we are waiting for user auth
+          return;
       }
-      console.log('[App.tsx] handleSave: Proceeding with local storage save.');
+      console.log('[App.tsx] handleSave: Conditions for Google Sheets save NOT MET. Using local storage.');
+      setStatusMessage(FIELD_LABELS_TH.SAVING_TO_LOCAL_STORAGE_SIGN_IN_PROMPT);
       setMeasurements(prev => {
         const existingIndex = prev.findIndex(m => m.id === finalMeasurement.id);
         let updatedMeasurements;
@@ -514,26 +546,32 @@ const App: React.FC = () => {
       setStatusMessage(FIELD_LABELS_TH.USING_LOCAL_STORAGE + ' (บันทึกสำเร็จในเครื่อง)');
       setIsLoading(false); return;
     }
-
+    
+    console.log('[App.tsx] handleSave: Conditions for Google Sheets save MET. Proceeding with Sheets operation.');
     setStatusMessage(FIELD_LABELS_TH.SYNCING_DATA + ' (กำลังบันทึก...)');
     try {
       const rowData = measurementToRow(finalMeasurement);
       if (finalMeasurement.rowIndex && finalMeasurement.id) { 
         const range = `${SHEET_NAME}!A${finalMeasurement.rowIndex}`;
-        await window.gapi.client.sheets.spreadsheets.values.update({
+        console.log('[App.tsx] handleSave (Sheets): Attempting to UPDATE. SpreadsheetId:', userSpreadsheetId, 'Range:', range, 'Data:', rowData);
+        const updateResponse = await window.gapi.client.sheets.spreadsheets.values.update({
           spreadsheetId: userSpreadsheetId, range: range, valueInputOption: 'USER_ENTERED', resource: { values: [rowData] },
         });
+        console.log('[App.tsx] handleSave (Sheets): Update response:', updateResponse);
       } else { 
+        console.log('[App.tsx] handleSave (Sheets): Attempting to APPEND. SpreadsheetId:', userSpreadsheetId, 'Data:', rowData);
         const appendResponse = await window.gapi.client.sheets.spreadsheets.values.append({
           spreadsheetId: userSpreadsheetId, range: `${SHEET_NAME}!A1`, valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS', resource: { values: [rowData] },
         });
+        console.log('[App.tsx] handleSave (Sheets): Append response:', appendResponse);
         const updatedRange = appendResponse.result.updates?.updatedRange;
         if (updatedRange) {
           const match = updatedRange.match(/!A(\d+):/);
           if (match && match[1]) finalMeasurement.rowIndex = parseInt(match[1], 10);
         }
       }
+      console.log('[App.tsx] handleSave (Sheets): Save successful. Reloading all measurements from sheet.');
       setStatusMessage(FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS + ' (บันทึกสำเร็จ)');
       await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); 
     } catch (error: any) {
@@ -550,35 +588,54 @@ const App: React.FC = () => {
   };
 
   const getSheetIdByTitle = async (spreadsheetFileId: string, sheetTitle: string): Promise<number | undefined> => {
-    if(!gapiInited || !window.gapi?.client?.sheets) return undefined; 
+    if(!gapiInited || !window.gapi?.client?.sheets) {
+      console.warn('[App.tsx] getSheetIdByTitle: GAPI not ready or sheets client not available.');
+      return undefined; 
+    }
     try {
+        console.log(`[App.tsx] getSheetIdByTitle: Fetching sheet ID for title "${sheetTitle}" in spreadsheet "${spreadsheetFileId}"`);
         const response = await window.gapi.client.sheets.spreadsheets.get({
             spreadsheetId: spreadsheetFileId, fields: 'sheets(properties(sheetId,title))',
         });
         const sheet = response.result.sheets?.find(s => s.properties?.title === sheetTitle);
+        console.log(`[App.tsx] getSheetIdByTitle: Found sheet:`, sheet);
         return sheet?.properties?.sheetId;
-    } catch (error) { return undefined; }
+    } catch (error) { 
+        console.error(`[App.tsx] getSheetIdByTitle: Error fetching sheet ID for "${sheetTitle}":`, error);
+        return undefined; 
+    }
   };
 
   const handleDelete = useCallback(async (id: string) => {
     const measurementToDelete = measurements.find(m => m.id === id);
     if (!measurementToDelete || !window.confirm(FIELD_LABELS_TH.CONFIRM_DELETE_MESSAGE)) return;
+    
+    console.log('[App.tsx] handleDelete: Initiating delete for ID:', id, 'RowIndex:', measurementToDelete.rowIndex);
     setIsLoading(true); 
 
     if (!isSignedIn || !accessToken || !gapiInited || !userSpreadsheetId || !measurementToDelete.rowIndex) {
       if(!isSignedIn && tokenClient){ 
-        setActionRequiresAuth(() => () => handleDelete(id)); handleAuthClick(); return;
+        console.log('[App.tsx] handleDelete: Not signed in, but tokenClient available. Prompting for auth.');
+        setActionRequiresAuth(() => () => handleDelete(id)); handleAuthClick(); 
+        setIsLoading(false); return;
       }
+      console.log('[App.tsx] handleDelete: Conditions for Google Sheets delete NOT MET. Using local storage.');
+      setStatusMessage(FIELD_LABELS_TH.DELETING_FROM_LOCAL_STORAGE_SIGN_IN_PROMPT);
       const updatedLocalMeasurements = measurements.filter(m => m.id !== id);
       saveMeasurementsToLocalStorage(updatedLocalMeasurements); setMeasurements(updatedLocalMeasurements);
       setStatusMessage(updatedLocalMeasurements.length === 0 ? FIELD_LABELS_TH.NO_RECORDS : FIELD_LABELS_TH.USING_LOCAL_STORAGE + ' (ลบสำเร็จในเครื่อง)'); 
       setIsLoading(false); return;
     }
-
+    
+    console.log('[App.tsx] handleDelete: Conditions for Google Sheets delete MET.');
     setStatusMessage(FIELD_LABELS_TH.SYNCING_DATA + ' (กำลังลบ...)');
     try {
       const sheetNumericId = await getSheetIdByTitle(userSpreadsheetId, SHEET_NAME);
-      if (sheetNumericId === undefined) throw new Error(`Could not find sheet ID for "${SHEET_NAME}" to delete row.`);
+      if (sheetNumericId === undefined) {
+        console.error(`[App.tsx] handleDelete: Could not find sheet ID for "${SHEET_NAME}" to delete row.`);
+        throw new Error(`Could not find sheet ID for "${SHEET_NAME}" to delete row.`);
+      }
+      console.log(`[App.tsx] handleDelete: Deleting row ${measurementToDelete.rowIndex} (index ${measurementToDelete.rowIndex - 1}) from sheet ID ${sheetNumericId}`);
       await window.gapi.client.sheets.spreadsheets.batchUpdate({
         spreadsheetId: userSpreadsheetId, resource: {
           requests: [{ deleteDimension: { range: {
@@ -586,6 +643,7 @@ const App: React.FC = () => {
                 startIndex: measurementToDelete.rowIndex - 1, endIndex: measurementToDelete.rowIndex,
           }}}]},
       });
+      console.log('[App.tsx] handleDelete: Delete successful. Reloading data.');
       setStatusMessage(FIELD_LABELS_TH.SYNCED_WITH_GOOGLE_SHEETS + ' (ลบสำเร็จ)'); 
       await loadMeasurementsFromSheet(accessToken, userSpreadsheetId); 
     } catch (error: any) {
@@ -606,6 +664,7 @@ const App: React.FC = () => {
     setEditingMeasurement({ ...initialMeasurementState, id: '' }); setCurrentView(ViewMode.Form);
   };
   const handleEdit = (measurement: CustomerMeasurement) => {
+    console.log('[App.tsx] handleEdit: Navigating to form to edit measurement:', measurement);
     setEditingMeasurement({ ...initialMeasurementState, ...measurement }); setCurrentView(ViewMode.Form);
   };
   const handleCancelForm = () => {
