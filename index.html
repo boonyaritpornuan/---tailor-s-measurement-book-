@@ -1,10 +1,27 @@
-
 <!DOCTYPE html>
 <html lang="th">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>สมุดวัดตัวช่างตัดเสื้อ</title>
+    <meta name="description" content="แอปพลิเคชันสำหรับช่างตัดเสื้อเพื่อบันทึกข้อมูลขนาดร่างกายของลูกค้า สามารถติดตั้งบนอุปกรณ์และใช้งานออฟไลน์ได้เบื้องต้น" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#0ea5e9" />
+
+    <!-- Apple Touch Icons (ensure you have these icons in /icons/ directory) -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180x180.png" sizes="180x180" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-152x152.png" sizes="152x152" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-120x120.png" sizes="120x120" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-76x76.png" sizes="76x76" />
+    <link rel="icon" type="image/png" sizes="192x192"  href="/icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512"  href="/icons/icon-512x512.png">
+    <link rel="shortcut icon" href="/icons/favicon.ico">
+
+
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       /* Custom scrollbar for better aesthetics if needed, but Tailwind default is usually fine */
@@ -45,7 +62,7 @@
   }
 }
 </script>
-  <script src="https://apis.google.com/js/api.js" async defer></script>
+  <!-- <script src="https://apis.google.com/js/api.js" async defer></script> Removed: Handled in App.tsx -->
 </head>
   <body class="bg-slate-50">
     <div id="root"></div>
@@ -55,7 +72,19 @@
       document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('loaded');
       });
+
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(error => {
+              console.log('ServiceWorker registration failed: ', error);
+            });
+        });
+      }
     </script>
   </body>
-</html><link rel="stylesheet" href="index.css">
-<script src="index.tsx" type="module"></script>
+</html>
