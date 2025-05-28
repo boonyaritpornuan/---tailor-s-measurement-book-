@@ -1,6 +1,11 @@
 
 export const USER_SPREADSHEET_FILENAME = 'สมุดวัดตัวลูกค้า (Tailor App Data)'; // Default filename in user's Drive
 
+// LocalStorage Keys
+export const LS_ACCESS_TOKEN = 'tailorApp_accessToken';
+export const LS_TOKEN_EXPIRY = 'tailorApp_tokenExpiry';
+export const LS_IS_SIGNED_IN = 'tailorApp_isSignedIn'; // Optional: Can rely on token presence
+
 export const FIELD_LABELS_TH = {
   APP_TITLE: 'สมุดวัดตัวช่างตัดเสื้อ',
   INSTRUCTIONS_TITLE: 'คำแนะนำการวัดตัว',
@@ -107,11 +112,15 @@ export const FIELD_LABELS_TH = {
   SAVING_TO_LOCAL_STORAGE_SIGN_IN_PROMPT: 'กำลังบันทึกลงในเครื่อง กรุณาลงชื่อเข้าใช้เพื่อบันทึกไปยัง Google Drive',
   DELETING_FROM_LOCAL_STORAGE_SIGN_IN_PROMPT: 'กำลังลบจากข้อมูลในเครื่อง กรุณาลงชื่อเข้าใช้เพื่อดำเนินการกับข้อมูลใน Google Drive',
   
-  // New detailed GAPI status messages
   GAPI_INITIALIZING: 'กำลังเริ่มต้น Google API Client Libraries...',
   GAPI_INIT_SUCCESS: 'Google API Client Libraries เริ่มต้นสำเร็จแล้ว',
   AUTHENTICATED_INITIALIZING_APIS: 'ยืนยันตัวตนกับ Google สำเร็จ กำลังเตรียมบริการ API...',
   ERROR_GAPI_CLIENT_UNEXPECTED: 'ข้อผิดพลาด: Google API Client ไม่พร้อมใช้งานหลังจากเริ่มต้นแล้ว',
   ERROR_GAPI_CLIENT_INIT_NOT_FOUND: 'ข้อผิดพลาดร้ายแรง: ไม่พบ gapi.client.init โปรดรีเฟรชหน้า หรือตรวจสอบการเชื่อมต่อ/ส่วนขยายเบราว์เซอร์',
-  ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND: 'ข้อผิดพลาด: ฟังก์ชัน gapi.load ไม่พร้อมใช้งาน GAPI library อาจโหลดไม่ถูกต้อง'
+  ERROR_GAPI_LOAD_FUNCTION_NOT_FOUND: 'ข้อผิดพลาด: ฟังก์ชัน gapi.load ไม่พร้อมใช้งาน GAPI library อาจโหลดไม่ถูกต้อง',
+
+  // Persistent Login Status Messages
+  SESSION_RESTORED_LOADING_DATA: 'กู้คืนเซสชันก่อนหน้า กำลังโหลดข้อมูล...',
+  SESSION_EXPIRED_SIGN_IN: 'เซสชันหมดอายุ กรุณาลงชื่อเข้าใช้อีกครั้ง',
+  SIGNED_OUT_USING_LOCAL: 'ออกจากระบบแล้ว กำลังใช้งานข้อมูลในเครื่อง'
 };
